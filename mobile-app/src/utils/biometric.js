@@ -91,7 +91,12 @@ export async function authenticateWithBiometric(promptMessage = 'Authenticate') 
       }
       const options = await resp.json();
       const webauthn = await getWebAuthnBrowser();
-      const assertion = await webauthn.startAuthentication({ optionsJSON: options });
+      let assertion;
+      try {
+        assertion = await webauthn.startAuthentication(options);
+      } catch (e) {
+        assertion = await webauthn.startAuthentication({ optionsJSON: options });
+      }
       // We don't need to verify with the server for a simple presence check,
       // but the assertion succeeding means the user passed biometric verification.
       return { success: true };
@@ -311,19 +316,26 @@ export async function webauthnRegister(authToken) {
     const webauthn = await getWebAuthnBrowser();
     let registrationResponse;
     try {
-      registrationResponse = await webauthn.startRegistration({ optionsJSON: options });
+      // Try the newer API shape first, then fallback
+      if (typeof webauthn.startRegistration === 'function') {
+        try {
+          registrationResponse = await webauthn.startRegistration(options);
+        } catch (e1) {
+          console.log('startRegistration(options) failed, trying { optionsJSON }:', e1.message);
+          registrationResponse = await webauthn.startRegistration({ optionsJSON: options });
+        }
+      } else {
+        throw new Error('startRegistration not found in @simplewebauthn/browser');
+      }
     } catch (regErr) {
       console.error('WebAuthn startRegistration error:', regErr);
       if (regErr.name === 'NotAllowedError') {
         return { success: false, error: 'user_cancel' };
       }
-      // Try alternate API shape for older versions
-      try {
-        registrationResponse = await webauthn.startRegistration(options);
-      } catch (regErr2) {
-        console.error('WebAuthn startRegistration fallback error:', regErr2);
-        return { success: false, error: regErr2.message || 'Registration failed' };
+      if (regErr.name === 'NotReadableError') {
+        return { success: false, error: 'Could not access biometric. Make sure fingerprint is set up in your device settings and try again.' };
       }
+      return { success: false, error: regErr.message || 'Registration failed' };
     }
 
     // Step 3: Send result to backend for verification
@@ -379,7 +391,12 @@ export async function webauthnAuthenticate(email) {
 
     // Step 2: Start browser authentication ceremony
     const webauthn = await getWebAuthnBrowser();
-    const authResponse = await webauthn.startAuthentication({ optionsJSON: options });
+    let authResponse;
+    try {
+      authResponse = await webauthn.startAuthentication(options);
+    } catch (e) {
+      authResponse = await webauthn.startAuthentication({ optionsJSON: options });
+    }
 
     // Step 3: Send result to backend for verification
     const verifyResp = await fetch('/api/webauthn/auth-verify', {

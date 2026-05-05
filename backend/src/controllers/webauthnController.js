@@ -48,8 +48,8 @@ exports.registerOptions = async (req, res) => {
       excludeCredentials: existingCredentials,
       authenticatorSelection: {
         authenticatorAttachment: 'platform',
-        residentKey: 'required',
-        requireResidentKey: true,
+        residentKey: 'discouraged',
+        requireResidentKey: false,
         userVerification: 'required',
       },
     });
