@@ -4,14 +4,15 @@
   "description": "Family chore and screen time management",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#6200ee",
+  "background_color": "#ffffff",
   "theme_color": "#6200ee",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "48x48",
-      "type": "image/x-icon"
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
