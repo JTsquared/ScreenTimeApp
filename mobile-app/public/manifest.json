@@ -1,0 +1,17 @@
+{
+  "name": "ScreenTime Manager",
+  "short_name": "ScreenTime",
+  "description": "Family chore and screen time management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#6200ee",
+  "theme_color": "#6200ee",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
