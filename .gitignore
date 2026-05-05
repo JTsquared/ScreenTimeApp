@@ -1,3 +1,26 @@
+# Secrets and environment
 .secrets
 .env
+*.pem
+
+# Dependencies
+node_modules/
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
