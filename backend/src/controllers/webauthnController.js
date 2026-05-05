@@ -47,7 +47,9 @@ exports.registerOptions = async (req, res) => {
       attestationType: 'none',
       excludeCredentials: existingCredentials,
       authenticatorSelection: {
-        residentKey: 'preferred',
+        authenticatorAttachment: 'platform',
+        residentKey: 'required',
+        requireResidentKey: true,
         userVerification: 'required',
       },
     });
