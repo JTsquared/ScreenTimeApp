@@ -109,7 +109,7 @@ exports.deleteDevice = async (req, res) => {
   }
 };
 
-// Enable device (child requests screen time)
+// Enable device (child requests screen time, or parent enables directly)
 exports.enableDevice = async (req, res) => {
   try {
     const { durationMinutes } = req.body;
@@ -124,6 +124,27 @@ exports.enableDevice = async (req, res) => {
     if (!device) {
       return res.status(404).json({ message: 'Device not found' });
     }
+
+    // Parent override — enable without screen time checks
+    if (req.user.role === 'parent') {
+      device.isEnabled = true;
+      device.enabledUntil = null; // No time limit for parent override
+      await device.save();
+
+      // Create device command for Pi service
+      await DeviceCommand.create({
+        deviceId: device._id,
+        command: 'enable',
+        familyId: req.user.familyId
+      });
+
+      return res.json({
+        device,
+        message: 'Device enabled by parent'
+      });
+    }
+
+    // Child flow below — requires screen time balance
 
     // Check if device is already enabled
     if (device.isEnabled && device.enabledUntil && device.enabledUntil > new Date()) {
