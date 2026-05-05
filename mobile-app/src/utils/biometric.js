@@ -309,7 +309,22 @@ export async function webauthnRegister(authToken) {
 
     // Step 2: Start browser registration ceremony
     const webauthn = await getWebAuthnBrowser();
-    const registrationResponse = await webauthn.startRegistration({ optionsJSON: options });
+    let registrationResponse;
+    try {
+      registrationResponse = await webauthn.startRegistration({ optionsJSON: options });
+    } catch (regErr) {
+      console.error('WebAuthn startRegistration error:', regErr);
+      if (regErr.name === 'NotAllowedError') {
+        return { success: false, error: 'user_cancel' };
+      }
+      // Try alternate API shape for older versions
+      try {
+        registrationResponse = await webauthn.startRegistration(options);
+      } catch (regErr2) {
+        console.error('WebAuthn startRegistration fallback error:', regErr2);
+        return { success: false, error: regErr2.message || 'Registration failed' };
+      }
+    }
 
     // Step 3: Send result to backend for verification
     const verifyResp = await fetch('/api/webauthn/register-verify', {

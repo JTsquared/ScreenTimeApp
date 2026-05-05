@@ -190,14 +190,22 @@ export default function LoginScreen() {
       const regResult = await webauthnRegister(token);
       setLoading(false);
 
+      console.log('WebAuthn register result:', JSON.stringify(regResult));
       if (regResult.success) {
         const userId = pendingCredentials.userData._id || pendingCredentials.userData.id;
         setWebAuthnRegistered(userId);
         setWebAuthnEmail(pendingCredentials.email);
         setSavedWebAuthnEmail(pendingCredentials.email);
         setWebAuthnRegisteredState(true);
-      } else if (regResult.error !== 'user_cancel') {
-        setError(regResult.error || 'Failed to register biometric');
+      } else {
+        if (regResult.error !== 'user_cancel') {
+          setError(regResult.error || 'Failed to register biometric');
+        }
+        // Don't proceed to home on failure
+        setShowEnableBiometricDialog(false);
+        setPendingCredentials(null);
+        setLoading(false);
+        return;
       }
     } else {
       // Native: save credentials to SecureStore
