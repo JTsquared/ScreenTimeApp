@@ -18,10 +18,10 @@ export default function TabLayout() {
   const LogoutButton = () => (
     <IconButton
       icon="account-circle"
-      iconColor="#fff"
-      size={26}
+      iconColor="#ffffff"
+      size={28}
       onPress={() => setLogoutVisible(true)}
-      style={{ marginRight: 4 }}
+      style={{ marginRight: 4, opacity: 1 }}
     />
   );
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { TextInput, Button, Text, Snackbar, Dialog, Portal } from 'react-native-paper';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../src/context/AuthContext';
 import {
   isBiometricAvailable,
@@ -9,6 +10,12 @@ import {
   authenticateWithBiometric,
   getBiometricCredentials,
   saveBiometricCredentials,
+  isWebAuthnAvailable,
+  hasWebAuthnCredential,
+  setWebAuthnRegistered,
+  setWebAuthnEmail,
+  webauthnRegister,
+  webauthnAuthenticate,
 } from '../../src/utils/biometric';
 
 export default function LoginScreen() {
@@ -25,7 +32,12 @@ export default function LoginScreen() {
   const [showEnableBiometricDialog, setShowEnableBiometricDialog] = useState(false);
   const [pendingCredentials, setPendingCredentials] = useState(null);
 
-  const { login, isParent } = useAuth();
+  // Web WebAuthn state
+  const [webAuthnAvailable, setWebAuthnAvailable] = useState(false);
+  const [webAuthnRegistered, setWebAuthnRegisteredState] = useState(false);
+  const [savedWebAuthnEmail, setSavedWebAuthnEmail] = useState('');
+
+  const { login, isParent, updateUser } = useAuth();
   const router = useRouter();
 
   const getHomeRoute = (userData) => {
@@ -38,13 +50,33 @@ export default function LoginScreen() {
   }, []);
 
   const checkBiometric = async () => {
-    const available = await isBiometricAvailable();
-    setBiometricAvailable(available);
-    if (available) {
-      const type = await getBiometricType();
-      setBiometricType(type || 'Biometric');
-      const creds = await getBiometricCredentials();
-      setHasSavedCredentials(!!creds);
+    if (Platform.OS === 'web') {
+      // Web: check WebAuthn
+      const available = isWebAuthnAvailable();
+      setWebAuthnAvailable(available);
+      if (available) {
+        // Check if any user has registered on this device
+        // We store the email separately so we can pre-fill and show the button
+        const storedEmail = localStorage.getItem('webauthn_email');
+        if (storedEmail) {
+          setSavedWebAuthnEmail(storedEmail);
+          // We don't know the userId yet, but we can check by email convention
+          // The hasWebAuthnCredential check needs a userId, so we check for the email flag
+          setWebAuthnRegisteredState(true);
+        }
+      }
+      // Also check native biometric (will be false on web, handled by isBiometricAvailable)
+      setBiometricAvailable(false);
+    } else {
+      // Native: check device biometric
+      const available = await isBiometricAvailable();
+      setBiometricAvailable(available);
+      if (available) {
+        const type = await getBiometricType();
+        setBiometricType(type || 'Biometric');
+        const creds = await getBiometricCredentials();
+        setHasSavedCredentials(!!creds);
+      }
     }
   };
 
@@ -62,13 +94,23 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (result.success) {
-      // If biometric is available but not set up, ask to enable
-      if (biometricAvailable && !hasSavedCredentials) {
-        setPendingCredentials({ email: email.toLowerCase().trim(), password, userData: result.user });
-        setShowEnableBiometricDialog(true);
+      if (Platform.OS === 'web') {
+        // Web: offer to register WebAuthn if available and not yet registered
+        const userId = result.user._id || result.user.id;
+        if (webAuthnAvailable && !hasWebAuthnCredential(userId)) {
+          setPendingCredentials({ email: email.toLowerCase().trim(), password, userData: result.user });
+          setShowEnableBiometricDialog(true);
+          return;
+        }
       } else {
-        router.replace(getHomeRoute(result.user));
+        // Native: offer to enable biometric
+        if (biometricAvailable && !hasSavedCredentials) {
+          setPendingCredentials({ email: email.toLowerCase().trim(), password, userData: result.user });
+          setShowEnableBiometricDialog(true);
+          return;
+        }
       }
+      router.replace(getHomeRoute(result.user));
     } else {
       setError(result.error);
     }
@@ -108,11 +150,61 @@ export default function LoginScreen() {
     }
   };
 
+  const handleWebAuthnLogin = async () => {
+    setLoading(true);
+    setError('');
+
+    const emailToUse = savedWebAuthnEmail || email.toLowerCase().trim();
+    if (!emailToUse) {
+      setError('Please enter your email or username first');
+      setLoading(false);
+      return;
+    }
+
+    const result = await webauthnAuthenticate(emailToUse);
+
+    if (!result.success) {
+      setLoading(false);
+      if (result.error !== 'user_cancel') {
+        setError(result.error || 'Biometric authentication failed');
+      }
+      return;
+    }
+
+    // Store auth data (same as normal login flow)
+    await AsyncStorage.setItem('authToken', result.user.token);
+    await AsyncStorage.setItem('user', JSON.stringify(result.user));
+    await updateUser(result.user);
+
+    setLoading(false);
+    router.replace(getHomeRoute(result.user));
+  };
+
   const handleEnableBiometric = async () => {
-    if (pendingCredentials) {
+    if (!pendingCredentials) return;
+
+    if (Platform.OS === 'web') {
+      // Web: register WebAuthn credential
+      setLoading(true);
+      const token = pendingCredentials.userData.token;
+      const regResult = await webauthnRegister(token);
+      setLoading(false);
+
+      if (regResult.success) {
+        const userId = pendingCredentials.userData._id || pendingCredentials.userData.id;
+        setWebAuthnRegistered(userId);
+        setWebAuthnEmail(pendingCredentials.email);
+        setSavedWebAuthnEmail(pendingCredentials.email);
+        setWebAuthnRegisteredState(true);
+      } else if (regResult.error !== 'user_cancel') {
+        setError(regResult.error || 'Failed to register biometric');
+      }
+    } else {
+      // Native: save credentials to SecureStore
       await saveBiometricCredentials(pendingCredentials.email, pendingCredentials.password);
       setHasSavedCredentials(true);
     }
+
     const userData = pendingCredentials?.userData;
     setShowEnableBiometricDialog(false);
     setPendingCredentials(null);
@@ -125,6 +217,14 @@ export default function LoginScreen() {
     setPendingCredentials(null);
     router.replace(getHomeRoute(userData));
   };
+
+  // Determine which biometric login button to show
+  const showNativeBiometric = Platform.OS !== 'web' && biometricAvailable && hasSavedCredentials;
+  const showWebAuthnLogin = Platform.OS === 'web' && webAuthnAvailable && webAuthnRegistered;
+  const showBiometricButton = showNativeBiometric || showWebAuthnLogin;
+
+  const biometricLabel = Platform.OS === 'web' ? 'Biometric' : biometricType;
+  const dialogBiometricLabel = Platform.OS === 'web' ? 'Biometric (WebAuthn)' : biometricType;
 
   return (
     <KeyboardAvoidingView
@@ -140,11 +240,11 @@ export default function LoginScreen() {
             Sign in to continue
           </Text>
 
-          {/* Biometric login button */}
-          {biometricAvailable && hasSavedCredentials && (
+          {/* Biometric login button (native or WebAuthn) */}
+          {showBiometricButton && (
             <Button
               mode="contained"
-              onPress={handleBiometricLogin}
+              onPress={showNativeBiometric ? handleBiometricLogin : handleWebAuthnLogin}
               loading={loading}
               disabled={loading}
               style={styles.biometricButton}
@@ -152,11 +252,11 @@ export default function LoginScreen() {
               labelStyle={styles.buttonLabel}
               icon="fingerprint"
             >
-              Sign in with {biometricType}
+              Sign in with {biometricLabel}
             </Button>
           )}
 
-          {biometricAvailable && hasSavedCredentials && (
+          {showBiometricButton && (
             <Text style={styles.orDivider}>or sign in with credentials</Text>
           )}
 
@@ -214,15 +314,15 @@ export default function LoginScreen() {
           visible={showEnableBiometricDialog}
           onDismiss={handleSkipBiometric}
         >
-          <Dialog.Title>Enable {biometricType}?</Dialog.Title>
+          <Dialog.Title>Enable {dialogBiometricLabel}?</Dialog.Title>
           <Dialog.Content>
             <Text>
-              Would you like to use {biometricType} to sign in next time? You won't need to enter your password.
+              Would you like to use {dialogBiometricLabel} to sign in next time? You won't need to enter your password.
             </Text>
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={handleSkipBiometric}>Not Now</Button>
-            <Button onPress={handleEnableBiometric}>Enable</Button>
+            <Button onPress={handleEnableBiometric} loading={loading}>Enable</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>

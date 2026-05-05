@@ -11,6 +11,7 @@ const allowanceRoutes = require('./routes/allowanceRoutes');
 const familyRoutes = require('./routes/familyRoutes');
 const userRoutes = require('./routes/userRoutes');
 const piServiceRoutes = require('./routes/piServiceRoutes');
+const webauthnRoutes = require('./routes/webauthnRoutes');
 
 // Initialize express app
 const app = express();
@@ -37,6 +38,7 @@ app.use('/api/allowance', allowanceRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/pi', piServiceRoutes);
+app.use('/api/webauthn', webauthnRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

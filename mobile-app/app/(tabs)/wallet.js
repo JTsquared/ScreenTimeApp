@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, Platform } from 'react-native';
 import {
   Card,
   Text,
@@ -26,6 +26,7 @@ import {
   getParentApprovalCredentials,
   saveParentApprovalCredentials,
   hasParentApprovalCredentials,
+  isWebAuthnAvailable,
 } from '../../src/utils/biometric';
 
 export default function WalletScreen() {
@@ -75,7 +76,13 @@ export default function WalletScreen() {
   const [pendingApprovalId, setPendingApprovalId] = useState(null);
 
   const checkBiometric = async () => {
-    const available = await isBiometricAvailable();
+    // On web, check WebAuthn; on native, check device biometric
+    let available = false;
+    if (Platform.OS === 'web') {
+      available = isWebAuthnAvailable();
+    } else {
+      available = await isBiometricAvailable();
+    }
     setBiometricAvailable(available);
     if (available) {
       const type = await getBiometricType();

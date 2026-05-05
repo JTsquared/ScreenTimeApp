@@ -45,6 +45,12 @@ const userSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  webauthnCredentials: [{
+    credentialID: { type: String, required: true },
+    credentialPublicKey: { type: String, required: true }, // base64-encoded
+    counter: { type: Number, required: true, default: 0 },
+    transports: [{ type: String }],
+  }],
   createdAt: {
     type: Date,
     default: Date.now

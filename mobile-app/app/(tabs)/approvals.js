@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Platform } from 'react-native';
 import {
   Card,
   Text,
@@ -24,6 +24,7 @@ import {
   getParentApprovalCredentials,
   saveParentApprovalCredentials,
   hasParentApprovalCredentials,
+  isWebAuthnAvailable,
 } from '../../src/utils/biometric';
 
 export default function ApprovalsScreen() {
@@ -92,7 +93,13 @@ export default function ApprovalsScreen() {
   };
 
   const checkBiometric = async () => {
-    const available = await isBiometricAvailable();
+    // On web, check WebAuthn; on native, check device biometric
+    let available = false;
+    if (Platform.OS === 'web') {
+      available = isWebAuthnAvailable();
+    } else {
+      available = await isBiometricAvailable();
+    }
     setBiometricAvailable(available);
     if (available) {
       const type = await getBiometricType();
@@ -125,7 +132,10 @@ export default function ApprovalsScreen() {
 
     if (parentMode) {
       // Parent flow: biometric then approve directly
-      const bioAvailable = await isBiometricAvailable();
+      const bioAvailable = Platform.OS === 'web'
+        ? isWebAuthnAvailable()
+        : await isBiometricAvailable();
+
       if (bioAvailable) {
         const bioType = await getBiometricType();
         const authResult = await authenticateWithBiometric(
@@ -247,7 +257,10 @@ export default function ApprovalsScreen() {
 
     // Require biometric if on child's device
     if (!parentMode) {
-      const bioAvailable = await isBiometricAvailable();
+      const bioAvailable = Platform.OS === 'web'
+        ? isWebAuthnAvailable()
+        : await isBiometricAvailable();
+
       if (bioAvailable) {
         const bioType = await getBiometricType();
         const authResult = await authenticateWithBiometric(

@@ -11,6 +11,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@simplewebauthn/browser": "^13.3.0",
     "axios": "^1.6.2",
     "expo": "~54.0.0",
     "expo-local-authentication": "~17.0.8",
