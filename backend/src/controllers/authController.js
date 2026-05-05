@@ -9,10 +9,13 @@ const generateToken = (id) => {
   });
 };
 
-// Register new user (first user creates family)
+// Master registration code — required to create new families
+const MASTER_REGISTRATION_CODE = process.env.REGISTRATION_CODE || 'SCREENTIME2026';
+
+// Register new user (create new family or join existing)
 exports.register = async (req, res) => {
   try {
-    const { email, password, name, role, familyName } = req.body;
+    const { email, password, name, role, familyName, inviteCode, registrationCode } = req.body;
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -20,28 +23,59 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    if (!familyName) {
-      return res.status(400).json({ message: 'Family name is required for registration' });
+    let family;
+
+    if (inviteCode) {
+      // Join existing family via invite code
+      family = await Family.findOne({ inviteCode: inviteCode.toUpperCase().trim() });
+      if (!family) {
+        return res.status(400).json({ message: 'Invalid invite code' });
+      }
+    } else {
+      // Create new family — requires master registration code
+      if (!registrationCode || registrationCode !== MASTER_REGISTRATION_CODE) {
+        return res.status(403).json({ message: 'Registration code required to create a new family' });
+      }
+      if (!familyName) {
+        return res.status(400).json({ message: 'Family name is required' });
+      }
+
+      // Create a temp user ID placeholder for family creation
+      const tempUser = await User.create({
+        email,
+        password,
+        name,
+        role: role || 'parent',
+        allowanceRate: 0
+      });
+
+      family = await Family.create({
+        name: familyName,
+        createdBy: tempUser._id
+      });
+
+      tempUser.familyId = family._id;
+      await tempUser.save();
+
+      return res.status(201).json({
+        _id: tempUser._id,
+        name: tempUser.name,
+        email: tempUser.email,
+        role: tempUser.role,
+        familyId: tempUser.familyId,
+        token: generateToken(tempUser._id)
+      });
     }
 
-    // Create user first (without familyId)
+    // Join existing family
     const user = await User.create({
       email,
       password,
       name,
       role: role || 'parent',
+      familyId: family._id,
       allowanceRate: role === 'child' ? 2.0 : 0
     });
-
-    // Now create family with the user's ID
-    const family = await Family.create({
-      name: familyName,
-      createdBy: user._id
-    });
-
-    // Update user with familyId
-    user.familyId = family._id;
-    await user.save();
 
     res.status(201).json({
       _id: user._id,

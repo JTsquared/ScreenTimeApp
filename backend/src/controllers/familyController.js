@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const Family = require('../models/Family');
 
 // Get family settings
@@ -12,6 +13,7 @@ exports.getSettings = async (req, res) => {
     res.json({
       familyId: family._id,
       name: family.name,
+      inviteCode: family.inviteCode,
       minimumSavingsWithdrawal: family.minimumSavingsWithdrawal || 25
     });
   } catch (error) {
@@ -47,8 +49,31 @@ exports.updateSettings = async (req, res) => {
     res.json({
       familyId: family._id,
       name: family.name,
+      inviteCode: family.inviteCode,
       minimumSavingsWithdrawal: family.minimumSavingsWithdrawal
     });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Regenerate invite code (parents only)
+exports.regenerateInviteCode = async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parents can regenerate invite codes' });
+    }
+
+    const family = await Family.findById(req.user.familyId);
+    if (!family) {
+      return res.status(404).json({ message: 'Family not found' });
+    }
+
+    family.inviteCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+    await family.save();
+
+    res.json({ inviteCode: family.inviteCode });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error', error: error.message });

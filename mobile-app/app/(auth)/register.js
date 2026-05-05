@@ -6,16 +6,19 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { TextInput, Button, Text, Snackbar } from 'react-native-paper';
+import { TextInput, Button, Text, Snackbar, SegmentedButtons } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 
 export default function RegisterScreen() {
+  const [mode, setMode] = useState('join'); // 'join' or 'create'
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [familyName, setFamilyName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [registrationCode, setRegistrationCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,8 +27,18 @@ export default function RegisterScreen() {
   const router = useRouter();
 
   const handleRegister = async () => {
-    if (!name || !email || !password || !confirmPassword || !familyName) {
+    if (!name || !email || !password || !confirmPassword) {
       setError('Please fill in all fields');
+      return;
+    }
+
+    if (mode === 'join' && !inviteCode) {
+      setError('Invite code is required to join a family');
+      return;
+    }
+
+    if (mode === 'create' && (!familyName || !registrationCode)) {
+      setError('Family name and registration code are required');
       return;
     }
 
@@ -42,18 +55,26 @@ export default function RegisterScreen() {
     setLoading(true);
     setError('');
 
-    const result = await register({
+    const data = {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       password,
-      familyName: familyName.trim(),
       role: 'parent',
-    });
+    };
+
+    if (mode === 'join') {
+      data.inviteCode = inviteCode.trim();
+    } else {
+      data.familyName = familyName.trim();
+      data.registrationCode = registrationCode.trim();
+    }
+
+    const result = await register(data);
 
     setLoading(false);
 
     if (result.success) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/chores');
     } else {
       setError(result.error);
     }
@@ -70,8 +91,19 @@ export default function RegisterScreen() {
             Get Started
           </Text>
           <Text variant="bodyLarge" style={styles.subtitle}>
-            Create your parent account and set up your family
+            Join your family or create a new one
           </Text>
+
+          <SegmentedButtons
+            value={mode}
+            onValueChange={setMode}
+            buttons={[
+              { value: 'join', label: 'Join Family', icon: 'account-group' },
+              { value: 'create', label: 'New Family', icon: 'plus-circle' },
+            ]}
+            style={styles.modeSelector}
+            disabled={loading}
+          />
 
           <TextInput
             label="Your Name"
@@ -94,16 +126,40 @@ export default function RegisterScreen() {
             disabled={loading}
           />
 
-          <TextInput
-            label="Family Name"
-            value={familyName}
-            onChangeText={setFamilyName}
-            mode="outlined"
-            autoCapitalize="words"
-            placeholder='e.g. "The Turners"'
-            style={styles.input}
-            disabled={loading}
-          />
+          {mode === 'join' ? (
+            <TextInput
+              label="Family Invite Code"
+              value={inviteCode}
+              onChangeText={setInviteCode}
+              mode="outlined"
+              autoCapitalize="characters"
+              placeholder="e.g. 5F462EC7"
+              style={styles.input}
+              disabled={loading}
+            />
+          ) : (
+            <>
+              <TextInput
+                label="Family Name"
+                value={familyName}
+                onChangeText={setFamilyName}
+                mode="outlined"
+                autoCapitalize="words"
+                placeholder='e.g. "The Turners"'
+                style={styles.input}
+                disabled={loading}
+              />
+              <TextInput
+                label="Registration Code"
+                value={registrationCode}
+                onChangeText={setRegistrationCode}
+                mode="outlined"
+                autoCapitalize="none"
+                style={styles.input}
+                disabled={loading}
+              />
+            </>
+          )}
 
           <TextInput
             label="Password"
@@ -140,7 +196,7 @@ export default function RegisterScreen() {
             contentStyle={styles.buttonContent}
             labelStyle={styles.buttonLabel}
           >
-            Create Account
+            {mode === 'join' ? 'Join Family' : 'Create Family'}
           </Button>
 
           <Button
@@ -192,8 +248,11 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     textAlign: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
     color: '#666',
+  },
+  modeSelector: {
+    marginBottom: 20,
   },
   input: {
     marginBottom: 16,

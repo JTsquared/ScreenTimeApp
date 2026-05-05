@@ -8,5 +8,6 @@ router.use(protect);
 
 router.get('/settings', familyController.getSettings);
 router.put('/settings', restrictTo('parent'), familyController.updateSettings);
+router.post('/regenerate-invite', restrictTo('parent'), familyController.regenerateInviteCode);
 
 module.exports = router;

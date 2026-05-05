@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const familySchema = new mongoose.Schema({
   name: {
@@ -10,6 +11,11 @@ const familySchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
+  },
+  inviteCode: {
+    type: String,
+    unique: true,
+    default: () => crypto.randomBytes(4).toString('hex').toUpperCase()
   },
   minimumSavingsWithdrawal: {
     type: Number,

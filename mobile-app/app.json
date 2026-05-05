@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#6200ee"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -21,12 +21,19 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#6200ee"
       },
       "package": "com.screentime.manager"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "ScreenTime Manager",
+      "shortName": "ScreenTime",
+      "description": "Family chore and screen time management",
+      "backgroundColor": "#6200ee",
+      "themeColor": "#6200ee",
+      "display": "standalone",
+      "startUrl": "/"
     },
     "scheme": "screentime",
     "plugins": [

@@ -540,6 +540,37 @@ export default function SettingsScreen() {
             <Card.Content>
               <View style={styles.familySettingRow}>
                 <View style={{ flex: 1 }}>
+                  <Text variant="bodyMedium">Family Invite Code</Text>
+                  <Text variant="bodySmall" style={{ color: '#666' }}>
+                    Share this code with another parent to join your family.
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <Text variant="titleMedium" style={{ fontWeight: 'bold', color: '#6200ee', letterSpacing: 2 }}>
+                    {familySettings?.inviteCode || '---'}
+                  </Text>
+                  <Button
+                    compact
+                    mode="text"
+                    onPress={async () => {
+                      try {
+                        await familyAPI.regenerateInviteCode();
+                        setSuccessMsg('Invite code regenerated');
+                        await fetchFamilySettings();
+                      } catch (err) {
+                        setError('Failed to regenerate code');
+                      }
+                    }}
+                    icon="refresh"
+                    style={{ marginTop: -4 }}
+                  >
+                    Regenerate
+                  </Button>
+                </View>
+              </View>
+              <Divider style={{ marginVertical: 12 }} />
+              <View style={styles.familySettingRow}>
+                <View style={{ flex: 1 }}>
                   <Text variant="bodyMedium">Minimum Savings for Withdrawal</Text>
                   <Text variant="bodySmall" style={{ color: '#666' }}>
                     Children need at least this much saved before they can request a withdrawal.

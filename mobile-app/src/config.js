@@ -1,6 +1,12 @@
 // API Configuration
 // TODO: Update this with your actual backend URL
-export const API_BASE_URL = 'http://141.148.79.169:3000/api';
+// For web PWA, use relative URL (nginx proxies to backend)
+// For native app (Expo Go), use the full URL
+import { Platform } from 'react-native';
+
+export const API_BASE_URL = Platform.OS === 'web'
+  ? '/api'
+  : 'http://141.148.79.169:3000/api';
 
 // For local development/testing, you can use:
 // - iOS Simulator: http://localhost:3000/api

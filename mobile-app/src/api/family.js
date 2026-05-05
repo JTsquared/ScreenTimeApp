@@ -12,4 +12,10 @@ export const familyAPI = {
     const response = await apiClient.put('/family/settings', data);
     return response.data;
   },
+
+  // Regenerate invite code (parents only)
+  regenerateInviteCode: async () => {
+    const response = await apiClient.post('/family/regenerate-invite');
+    return response.data;
+  },
 };
