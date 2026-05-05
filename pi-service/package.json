@@ -1,0 +1,20 @@
+{
+  "name": "screentime-pi-service",
+  "version": "1.0.0",
+  "description": "Raspberry Pi service for DNS control via Pi-hole",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "keywords": ["raspberry-pi", "pi-hole", "dns", "parental-control"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
