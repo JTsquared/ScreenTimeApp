@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { TouchableOpacity, View } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
-import { Icon, IconButton, Dialog, Portal, Button, Text } from 'react-native-paper';
+import { Icon, Dialog, Portal, Button, Text } from 'react-native-paper';
 
 export default function TabLayout() {
   const { isParent, user, logout } = useAuth();
@@ -15,14 +16,25 @@ export default function TabLayout() {
     router.replace('/');
   };
 
+  const initials = (user?.name || '?').charAt(0).toUpperCase();
+
   const LogoutButton = () => (
-    <IconButton
-      icon="account-circle"
-      iconColor="#ffffff"
-      size={28}
+    <TouchableOpacity
       onPress={() => setLogoutVisible(true)}
-      style={{ marginRight: 4, opacity: 1 }}
-    />
+      style={{
+        marginRight: 12,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
+        {initials}
+      </Text>
+    </TouchableOpacity>
   );
 
   return (
