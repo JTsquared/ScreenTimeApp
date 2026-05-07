@@ -34,18 +34,13 @@ exports.registerOptions = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const existingCredentials = (user.webauthnCredentials || []).map((cred) => ({
-      id: cred.credentialID,
-      transports: cred.transports,
-    }));
-
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
       rpID: RP_ID,
       userName: user.email || user.username,
       userDisplayName: user.name,
       attestationType: 'none',
-      excludeCredentials: existingCredentials,
+      excludeCredentials: [],
       authenticatorSelection: {
         authenticatorAttachment: 'platform',
         residentKey: 'discouraged',
