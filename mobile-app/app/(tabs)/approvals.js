@@ -25,6 +25,7 @@ import {
   saveParentApprovalCredentials,
   hasParentApprovalCredentials,
   isWebAuthnAvailable,
+  registerParentWebAuthn,
 } from '../../src/utils/biometric';
 
 export default function ApprovalsScreen() {
@@ -175,23 +176,24 @@ export default function ApprovalsScreen() {
         return;
       }
 
-      // Biometric check
-      const bioType = await getBiometricType();
-      const authResult = await authenticateWithBiometric(
-        `Parent: use ${bioType} to approve chore`
-      );
-      if (!authResult.success) {
-        if (authResult.error !== 'user_cancel') {
-          setError('Parent authentication failed');
-        }
-        return;
-      }
-
-      // Use stored parent credentials
+      // Get stored parent credentials
       const creds = await getParentApprovalCredentials();
       if (!creds) {
         setError('Parent credentials not found. Please set up again.');
         setParentCredsSetUp(false);
+        return;
+      }
+
+      // Biometric check — use parent's email for WebAuthn assertion
+      const bioType = await getBiometricType();
+      const authResult = await authenticateWithBiometric(
+        `Parent: use ${bioType} to approve chore`,
+        creds.login
+      );
+      if (!authResult.success) {
+        if (authResult.error !== 'user_cancel') {
+          setError(authResult.error || 'Parent authentication failed');
+        }
         return;
       }
 
@@ -217,21 +219,33 @@ export default function ApprovalsScreen() {
     setSetupSaving(true);
 
     // Save the credentials
-    await saveParentApprovalCredentials(parentLogin.trim().toLowerCase(), parentPassword);
+    const login = parentLogin.trim().toLowerCase();
+    await saveParentApprovalCredentials(login, parentPassword);
     setParentCredsSetUp(true);
+
+    // Register parent's WebAuthn on this device (for biometric approval)
+    if (Platform.OS === 'web' && isWebAuthnAvailable()) {
+      const regResult = await registerParentWebAuthn(login, parentPassword);
+      if (!regResult.success && regResult.error !== 'user_cancel') {
+        console.log('Parent WebAuthn registration failed:', regResult.error);
+        // Non-fatal — quick approve will still work without biometric
+      }
+    }
+
     setSetupDialogVisible(false);
 
     // Now proceed with the pending approval
     if (pendingApprovalId) {
       const bioType = await getBiometricType();
       const authResult = await authenticateWithBiometric(
-        `Parent: use ${bioType} to approve chore`
+        `Parent: use ${bioType} to approve chore`,
+        login
       );
 
       if (authResult.success) {
         setProcessingId(pendingApprovalId);
         try {
-          await choresAPI.quickApprove(pendingApprovalId, parentLogin.trim().toLowerCase(), parentPassword);
+          await choresAPI.quickApprove(pendingApprovalId, login, parentPassword);
           setSuccessMsg('Chore approved!');
           await fetchCompletions();
         } catch (err) {

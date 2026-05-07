@@ -76,15 +76,20 @@ export async function getBiometricType() {
  *         which triggers the browser biometric prompt. This proves a person
  *         with registered biometrics is physically present.
  */
-export async function authenticateWithBiometric(promptMessage = 'Authenticate') {
+export async function authenticateWithBiometric(promptMessage = 'Authenticate', parentEmail = null) {
   if (Platform.OS === 'web') {
     // On web, use WebAuthn assertion to verify user presence.
-    // This requires the user to have previously registered a WebAuthn credential.
+    // Use parentEmail if provided (for quick-approve on child's device),
+    // otherwise fall back to the stored email (for normal login flow).
+    const emailToUse = parentEmail || _getStoredParentWebAuthnEmail() || _getStoredWebAuthnEmail();
+    if (!emailToUse) {
+      return { success: false, error: 'No WebAuthn credentials found' };
+    }
     try {
       const resp = await fetch('/api/webauthn/auth-options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: _getStoredWebAuthnEmail() }),
+        body: JSON.stringify({ email: emailToUse }),
       });
       if (!resp.ok) {
         return { success: false, error: 'webauthn_not_available' };
@@ -268,6 +273,17 @@ export function setWebAuthnRegistered(userId) {
 // Store the email/username used for WebAuthn auth-options calls
 // (needed for the biometric presence check in authenticateWithBiometric on web).
 const WEBAUTHN_EMAIL_KEY = 'webauthn_email';
+const PARENT_WEBAUTHN_EMAIL_KEY = 'parent_webauthn_email';
+
+function _getStoredParentWebAuthnEmail() {
+  if (Platform.OS !== 'web') return null;
+  return localStorage.getItem(PARENT_WEBAUTHN_EMAIL_KEY);
+}
+
+export function setParentWebAuthnEmail(email) {
+  if (Platform.OS !== 'web') return;
+  localStorage.setItem(PARENT_WEBAUTHN_EMAIL_KEY, email);
+}
 
 function _getStoredWebAuthnEmail() {
   if (Platform.OS !== 'web') return null;
@@ -359,6 +375,43 @@ export async function webauthnRegister(authToken) {
       return { success: false, error: 'user_cancel' };
     }
     return { success: false, error: err.message || 'WebAuthn registration failed' };
+  }
+}
+
+/**
+ * Register a parent's WebAuthn credential on a child's device.
+ * Logs in the parent temporarily to get a token, then registers WebAuthn.
+ */
+export async function registerParentWebAuthn(parentLogin, parentPassword) {
+  if (Platform.OS !== 'web') {
+    return { success: false, error: 'WebAuthn is only available on web' };
+  }
+
+  try {
+    // Step 1: Login as parent to get token
+    const loginResp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: parentLogin, password: parentPassword }),
+    });
+
+    if (!loginResp.ok) {
+      const err = await loginResp.json().catch(() => ({}));
+      return { success: false, error: err.message || 'Invalid parent credentials' };
+    }
+
+    const parentData = await loginResp.json();
+
+    // Step 2: Register WebAuthn with parent's token
+    const result = await webauthnRegister(parentData.token);
+
+    if (result.success) {
+      setParentWebAuthnEmail(parentLogin);
+    }
+
+    return result;
+  } catch (err) {
+    return { success: false, error: err.message || 'Failed to register parent biometric' };
   }
 }
 

@@ -27,6 +27,7 @@ import {
   saveParentApprovalCredentials,
   hasParentApprovalCredentials,
   isWebAuthnAvailable,
+  registerParentWebAuthn,
 } from '../../src/utils/biometric';
 
 export default function WalletScreen() {
@@ -262,21 +263,22 @@ export default function WalletScreen() {
       return;
     }
 
-    const bioType = await getBiometricType();
-    const authResult = await authenticateWithBiometric(
-      `Parent: use ${bioType} to approve request`
-    );
-    if (!authResult.success) {
-      if (authResult.error !== 'user_cancel') {
-        setError('Parent authentication failed');
-      }
-      return;
-    }
-
     const creds = await getParentApprovalCredentials();
     if (!creds) {
       setError('Parent credentials not found. Please set up again.');
       setParentCredsSetUp(false);
+      return;
+    }
+
+    const bioType = await getBiometricType();
+    const authResult = await authenticateWithBiometric(
+      `Parent: use ${bioType} to approve request`,
+      creds.login
+    );
+    if (!authResult.success) {
+      if (authResult.error !== 'user_cancel') {
+        setError(authResult.error || 'Parent authentication failed');
+      }
       return;
     }
 
@@ -299,20 +301,31 @@ export default function WalletScreen() {
     }
 
     setSetupSaving(true);
-    await saveParentApprovalCredentials(parentLogin.trim().toLowerCase(), parentPassword);
+    const login = parentLogin.trim().toLowerCase();
+    await saveParentApprovalCredentials(login, parentPassword);
     setParentCredsSetUp(true);
+
+    // Register parent's WebAuthn on this device
+    if (Platform.OS === 'web' && isWebAuthnAvailable()) {
+      const regResult = await registerParentWebAuthn(login, parentPassword);
+      if (!regResult.success && regResult.error !== 'user_cancel') {
+        console.log('Parent WebAuthn registration failed:', regResult.error);
+      }
+    }
+
     setSetupDialogVisible(false);
 
     if (pendingApprovalId) {
       const bioType = await getBiometricType();
       const authResult = await authenticateWithBiometric(
-        `Parent: use ${bioType} to approve request`
+        `Parent: use ${bioType} to approve request`,
+        login
       );
 
       if (authResult.success) {
         setProcessingId(pendingApprovalId);
         try {
-          await allowanceAPI.quickApproveRequest(pendingApprovalId, parentLogin.trim().toLowerCase(), parentPassword);
+          await allowanceAPI.quickApproveRequest(pendingApprovalId, login, parentPassword);
           setSuccessMsg('Request approved!');
           await fetchData();
         } catch (err) {
