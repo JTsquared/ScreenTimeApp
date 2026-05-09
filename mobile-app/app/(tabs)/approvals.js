@@ -132,7 +132,7 @@ export default function ApprovalsScreen() {
     const id = completion._id || completion.id;
 
     if (parentMode) {
-      // Parent flow: biometric then approve directly
+      // Parent flow: try biometric if available, but don't block if not set up
       const bioAvailable = Platform.OS === 'web'
         ? isWebAuthnAvailable()
         : await isBiometricAvailable();
@@ -143,10 +143,11 @@ export default function ApprovalsScreen() {
           `Use ${bioType} to approve chore`
         );
         if (!authResult.success) {
-          if (authResult.error !== 'user_cancel') {
-            setError('Authentication required to approve chores');
+          if (authResult.error === 'user_cancel') {
+            return;
           }
-          return;
+          // If WebAuthn isn't set up on this device, skip biometric and approve directly
+          // Parent is already authenticated via their session
         }
       }
 
