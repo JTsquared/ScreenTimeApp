@@ -23,8 +23,8 @@ const choreSchema = new mongoose.Schema({
   },
   estimatedMinutes: {
     type: Number,
-    required: true,
-    min: 1
+    default: 0,
+    min: 0
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
