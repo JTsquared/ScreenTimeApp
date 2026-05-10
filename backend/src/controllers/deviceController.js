@@ -273,6 +273,71 @@ exports.getMySessions = async (req, res) => {
   }
 };
 
+// Stop screen time early (child returns unused minutes)
+exports.stopEarly = async (req, res) => {
+  try {
+    const deviceId = req.params.id;
+
+    const device = await Device.findOne({
+      _id: deviceId,
+      familyId: req.user.familyId
+    });
+
+    if (!device) {
+      return res.status(404).json({ message: 'Device not found' });
+    }
+
+    if (!device.isEnabled) {
+      return res.status(400).json({ message: 'Device is not currently enabled' });
+    }
+
+    // Find the active session
+    const session = await ScreenTimeSession.findOne({
+      deviceId: device._id,
+      childId: req.user._id,
+      isActive: true,
+      endsAt: { $gt: new Date() }
+    });
+
+    if (!session) {
+      return res.status(400).json({ message: 'No active session found for this device' });
+    }
+
+    // Calculate how many minutes were actually used
+    const now = new Date();
+    const minutesUsed = Math.ceil((now - session.startedAt) / (1000 * 60));
+    const minutesReturned = Math.max(0, session.minutesAllocated - minutesUsed);
+
+    // Update session to only reflect actual usage
+    session.minutesAllocated = minutesUsed;
+    session.endsAt = now;
+    session.isActive = false;
+    await session.save();
+
+    // Disable device
+    device.isEnabled = false;
+    device.enabledUntil = null;
+    await device.save();
+
+    // Create disable command for Pi service
+    await DeviceCommand.create({
+      deviceId: device._id,
+      command: 'disable',
+      familyId: req.user.familyId
+    });
+
+    res.json({
+      message: `Screen time stopped early. ${minutesReturned} minutes returned.`,
+      minutesUsed,
+      minutesReturned,
+      device
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // Manually disable device (parents only)
 exports.disableDevice = async (req, res) => {
   try {

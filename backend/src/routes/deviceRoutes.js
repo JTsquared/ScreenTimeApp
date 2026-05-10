@@ -17,6 +17,7 @@ router.get('/sessions/my', deviceController.getMySessions);
 
 // Device control
 router.post('/:id/enable', deviceController.enableDevice);
+router.post('/:id/stop', deviceController.stopEarly);
 router.post('/:id/disable', restrictTo('parent'), deviceController.disableDevice);
 router.get('/:id/status', deviceController.getDeviceStatus);
 

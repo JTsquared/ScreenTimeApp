@@ -200,6 +200,21 @@ export default function DevicesScreen() {
     }
   };
 
+  // --- Child: Stop screen time early ---
+  const handleStopEarly = async (device) => {
+    const id = device._id || device.id;
+    setTogglingId(id);
+    try {
+      const result = await devicesAPI.stopEarly(id);
+      setSuccessMsg(result.message || 'Screen time stopped');
+      await Promise.all([fetchDevices(), fetchScreenTime()]);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to stop screen time');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   // --- Child: Request screen time ---
   const openScreenTimeDialog = (device) => {
     setSelectedDevice(device);
@@ -307,6 +322,18 @@ export default function DevicesScreen() {
               icon={isEnabled ? 'power-off' : 'power'}
             >
               {isEnabled ? 'Disable' : 'Enable'}
+            </Button>
+          ) : isEnabled ? (
+            <Button
+              mode="outlined"
+              onPress={() => handleStopEarly(item)}
+              loading={isToggling}
+              disabled={isToggling}
+              compact
+              icon="stop-circle-outline"
+              textColor="#d32f2f"
+            >
+              Stop Early
             </Button>
           ) : (
             <Button

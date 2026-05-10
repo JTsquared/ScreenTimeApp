@@ -31,6 +31,12 @@ export const devicesAPI = {
     return response.data;
   },
 
+  // Stop screen time early (children)
+  stopEarly: async (id) => {
+    const response = await apiClient.post(`/devices/${id}/stop`);
+    return response.data;
+  },
+
   // Enable device (children)
   enableDevice: async (id, durationMinutes) => {
     const response = await apiClient.post(`/devices/${id}/enable`, { durationMinutes });
