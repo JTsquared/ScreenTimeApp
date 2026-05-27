@@ -25,6 +25,7 @@ import {
   saveParentApprovalCredentials,
   hasParentApprovalCredentials,
   isWebAuthnAvailable,
+  hasWebAuthnCredential,
   registerParentWebAuthn,
 } from '../../src/utils/biometric';
 
@@ -132,9 +133,9 @@ export default function ApprovalsScreen() {
     const id = completion._id || completion.id;
 
     if (parentMode) {
-      // Parent flow: try biometric if available, but don't block if not set up
+      // Parent flow: try biometric if available AND registered on this device
       const bioAvailable = Platform.OS === 'web'
-        ? isWebAuthnAvailable()
+        ? isWebAuthnAvailable() && hasWebAuthnCredential(user?._id || user?.id)
         : await isBiometricAvailable();
 
       if (bioAvailable) {
@@ -146,7 +147,7 @@ export default function ApprovalsScreen() {
           if (authResult.error === 'user_cancel') {
             return;
           }
-          // If WebAuthn isn't set up on this device, skip biometric and approve directly
+          // If WebAuthn fails, skip biometric and approve directly
           // Parent is already authenticated via their session
         }
       }

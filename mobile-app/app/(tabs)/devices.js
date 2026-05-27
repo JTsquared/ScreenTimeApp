@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import {
   Card,
@@ -63,6 +63,13 @@ export default function DevicesScreen() {
   // Toggling state
   const [togglingId, setTogglingId] = useState(null);
 
+  // Tick every 60s to update elapsed time display
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const fetchDevices = async () => {
     try {
       const data = await devicesAPI.getDevices();
@@ -98,6 +105,13 @@ export default function DevicesScreen() {
       loadData();
     }, [parentMode])
   );
+
+  const formatElapsed = (mins) => {
+    if (mins < 60) return `${mins} min`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  };
 
   const getDeviceIcon = (type) => {
     const match = DEVICE_TYPES.find((dt) => dt.value === type);
@@ -218,7 +232,13 @@ export default function DevicesScreen() {
   // --- Child: Request screen time ---
   const openScreenTimeDialog = (device) => {
     setSelectedDevice(device);
-    setSelectedDuration(30);
+    const available = getAvailableMinutes();
+    // Default to all available time if less than smallest option, otherwise 30
+    if (available > 0 && available < DURATION_OPTIONS[0]) {
+      setSelectedDuration(available);
+    } else {
+      setSelectedDuration(30);
+    }
     setScreenTimeDialogVisible(true);
   };
 
@@ -304,6 +324,18 @@ export default function DevicesScreen() {
                 {Math.max(0, Math.ceil((new Date(item.enabledUntil) - new Date()) / 60000))} min left
               </Chip>
             )}
+            {isEnabled && item.enabledBy && (
+              <Chip
+                icon={item.enabledBy.role === 'parent' ? 'account-supervisor' : 'account-child'}
+                compact
+                style={[styles.chip, item.enabledBy.role === 'parent' ? styles.parentEnabledChip : styles.childEnabledChip]}
+              >
+                {item.enabledBy.role === 'parent'
+                  ? 'Parent enabled'
+                  : `${item.enabledBy.name}${item.enabledAt ? ` · ${formatElapsed(Math.floor((new Date() - new Date(item.enabledAt)) / 60000))} elapsed` : ''}`
+                }
+              </Chip>
+            )}
             {(item.macAddress || item.mac) && (
               <Chip icon="ethernet" compact style={styles.chip}>
                 {item.macAddress || item.mac}
@@ -323,7 +355,7 @@ export default function DevicesScreen() {
             >
               {isEnabled ? 'Disable' : 'Enable'}
             </Button>
-          ) : isEnabled ? (
+          ) : isEnabled && item.enabledBy?.role === 'child' ? (
             <Button
               mode="outlined"
               onPress={() => handleStopEarly(item)}
@@ -335,7 +367,7 @@ export default function DevicesScreen() {
             >
               Stop Early
             </Button>
-          ) : (
+          ) : !isEnabled ? (
             <Button
               mode="contained"
               onPress={() => openScreenTimeDialog(item)}
@@ -344,7 +376,7 @@ export default function DevicesScreen() {
             >
               Use Screen Time
             </Button>
-          )}
+          ) : null}
         </Card.Actions>
       </Card>
     );
@@ -543,6 +575,17 @@ export default function DevicesScreen() {
                   </Chip>
                 );
               })}
+              {getAvailableMinutes() > 0 && (
+                <Chip
+                  selected={selectedDuration === getAvailableMinutes()}
+                  onPress={() => setSelectedDuration(getAvailableMinutes())}
+                  style={[styles.durationChip, styles.allTimeChip]}
+                  showSelectedCheck
+                  compact
+                >
+                  All ({getAvailableMinutes()} min)
+                </Chip>
+              )}
             </View>
           </Dialog.Content>
           <Dialog.Actions>
@@ -671,6 +714,12 @@ const styles = StyleSheet.create({
   chip: {
     backgroundColor: '#ede7f6',
   },
+  parentEnabledChip: {
+    backgroundColor: '#e3f2fd',
+  },
+  childEnabledChip: {
+    backgroundColor: '#fff3e0',
+  },
   fab: {
     position: 'absolute',
     right: 16,
@@ -705,5 +754,8 @@ const styles = StyleSheet.create({
   },
   durationChipDisabled: {
     opacity: 0.4,
+  },
+  allTimeChip: {
+    backgroundColor: '#ede7f6',
   },
 });

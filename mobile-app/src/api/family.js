@@ -18,4 +18,12 @@ export const familyAPI = {
     const response = await apiClient.post('/family/regenerate-invite');
     return response.data;
   },
+
+  // Get activity log (parents only)
+  getActivityLog: async (before = null, limit = 30) => {
+    const params = { limit };
+    if (before) params.before = before;
+    const response = await apiClient.get('/family/activity-log', { params });
+    return response.data;
+  },
 };

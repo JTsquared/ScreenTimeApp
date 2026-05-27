@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, Platform } from 'react-native';
 import {
   Card,
   Text,
@@ -21,7 +21,7 @@ import { authAPI } from '../../src/api/auth';
 import { allowanceAPI } from '../../src/api/allowance';
 import { familyAPI } from '../../src/api/family';
 import { choresAPI } from '../../src/api/chores';
-import { isBiometricAvailable, getBiometricType, isBiometricLoginEnabled, disableBiometricLogin } from '../../src/utils/biometric';
+import { isBiometricAvailable, getBiometricType, isBiometricLoginEnabled, disableBiometricLogin, isWebAuthnAvailable, hasWebAuthnCredential, webauthnRegister, setWebAuthnRegistered, setWebAuthnEmail } from '../../src/utils/biometric';
 
 export default function SettingsScreen() {
   const { user, isParent, logout } = useAuth();
@@ -79,6 +79,16 @@ export default function SettingsScreen() {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricType, setBiometricType] = useState('Biometric');
+
+  // WebAuthn re-registration
+  const [webauthnRegistered, setWebauthnRegistered] = useState(false);
+  const [registeringWebAuthn, setRegisteringWebAuthn] = useState(false);
+
+  // Activity log
+  const [activityLog, setActivityLog] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityCursor, setActivityCursor] = useState(null);
+  const [hasMoreActivity, setHasMoreActivity] = useState(true);
 
   // Logout confirmation
   const [logoutDialogVisible, setLogoutDialogVisible] = useState(false);
@@ -142,6 +152,53 @@ export default function SettingsScreen() {
       const enabled = await isBiometricLoginEnabled();
       setBiometricEnabled(enabled);
     }
+    // Check WebAuthn registration on web
+    if (Platform.OS === 'web' && isWebAuthnAvailable()) {
+      const userId = user?._id || user?.id;
+      setWebauthnRegistered(userId ? hasWebAuthnCredential(userId) : false);
+    }
+  };
+
+  const handleRegisterWebAuthn = async () => {
+    setRegisteringWebAuthn(true);
+    try {
+      const token = user?.token;
+      if (!token) {
+        // Try to get token from auth context storage
+        const stored = localStorage.getItem('user');
+        const parsed = stored ? JSON.parse(stored) : null;
+        const authToken = parsed?.token;
+        if (!authToken) {
+          setError('Please log out and log back in to register fingerprint');
+          return;
+        }
+        const result = await webauthnRegister(authToken);
+        if (result.success) {
+          const userId = user?._id || user?.id;
+          setWebAuthnRegistered(userId);
+          setWebAuthnEmail(user?.email || user?.username);
+          setWebauthnRegistered(true);
+          setSuccessMsg('Fingerprint registered successfully!');
+        } else if (result.error !== 'user_cancel') {
+          setError(result.error || 'Failed to register fingerprint');
+        }
+      } else {
+        const result = await webauthnRegister(token);
+        if (result.success) {
+          const userId = user?._id || user?.id;
+          setWebAuthnRegistered(userId);
+          setWebAuthnEmail(user?.email || user?.username);
+          setWebauthnRegistered(true);
+          setSuccessMsg('Fingerprint registered successfully!');
+        } else if (result.error !== 'user_cancel') {
+          setError(result.error || 'Failed to register fingerprint');
+        }
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to register fingerprint');
+    } finally {
+      setRegisteringWebAuthn(false);
+    }
   };
 
   const handleDisableBiometric = async () => {
@@ -150,15 +207,84 @@ export default function SettingsScreen() {
     setSuccessMsg(`${biometricType} login disabled`);
   };
 
+  // Activity log helpers
+  const getActivityIcon = (type) => {
+    switch (type) {
+      case 'chore_approved': return 'check-circle';
+      case 'chore_rejected': return 'close-circle';
+      case 'screen_time': return 'television';
+      case 'payout': return 'cash';
+      case 'earned': return 'star';
+      case 'savings_deposit': return 'piggy-bank';
+      case 'savings_withdrawal': return 'bank-transfer-out';
+      case 'spend_request': return 'cart';
+      default: return 'information';
+    }
+  };
+
+  const getActivityColor = (type) => {
+    switch (type) {
+      case 'chore_approved': return '#e8f5e9';
+      case 'chore_rejected': return '#fce4ec';
+      case 'screen_time': return '#e3f2fd';
+      case 'payout': return '#fff3e0';
+      case 'earned': return '#f3e5f5';
+      case 'savings_deposit': return '#e8f5e9';
+      case 'savings_withdrawal': return '#fff3e0';
+      case 'spend_request': return '#fce4ec';
+      default: return '#ede7f6';
+    }
+  };
+
+  const timeAgo = (date) => {
+    const seconds = Math.floor((Date.now() - new Date(date)) / 1000);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(date).toLocaleDateString();
+  };
+
+  const fetchActivityLog = async (cursor = null) => {
+    setActivityLoading(true);
+    try {
+      const data = await familyAPI.getActivityLog(cursor);
+      if (cursor) {
+        setActivityLog(prev => [...prev, ...data.activities]);
+      } else {
+        setActivityLog(data.activities);
+      }
+      setHasMoreActivity(data.hasMore);
+      if (data.activities.length > 0) {
+        setActivityCursor(data.activities[data.activities.length - 1].timestamp);
+      }
+    } catch (err) {
+      // Non-critical
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([fetchFamilyMembers(), fetchBalances(), fetchChildStats(), fetchFamilySettings(), checkBiometric()]);
+    const tasks = [fetchFamilyMembers(), fetchBalances(), fetchChildStats(), fetchFamilySettings(), checkBiometric()];
+    if (parentMode) tasks.push(fetchActivityLog());
+    await Promise.all(tasks);
     setLoading(false);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchFamilyMembers(), fetchBalances(), fetchChildStats(), fetchFamilySettings()]);
+    const tasks = [fetchFamilyMembers(), fetchBalances(), fetchChildStats(), fetchFamilySettings()];
+    if (parentMode) {
+      setActivityCursor(null);
+      setHasMoreActivity(true);
+      tasks.push(fetchActivityLog());
+    }
+    await Promise.all(tasks);
     setRefreshing(false);
   };
 
@@ -588,6 +714,75 @@ export default function SettingsScreen() {
               </View>
             </Card.Content>
           </Card>
+        )}
+
+        {/* Activity Log */}
+        {parentMode && (
+          <Card style={styles.card} mode="elevated">
+            <Card.Title
+              title="Activity Log"
+              titleVariant="titleMedium"
+              left={(props) => (
+                <Avatar.Icon
+                  {...props}
+                  icon="history"
+                  size={40}
+                  style={styles.sectionIcon}
+                />
+              )}
+            />
+            <Card.Content>
+              {activityLog.length === 0 && !activityLoading && (
+                <Text style={styles.emptyText}>No activity yet</Text>
+              )}
+              {activityLog.map((item, index) => (
+                <View key={item._id || index}>
+                  {index > 0 && <Divider style={{ marginVertical: 4 }} />}
+                  <List.Item
+                    title={item.description}
+                    titleNumberOfLines={2}
+                    description={`${item.childName} · ${timeAgo(item.timestamp)}`}
+                    left={(props) => (
+                      <Avatar.Icon
+                        {...props}
+                        icon={getActivityIcon(item.type)}
+                        size={36}
+                        style={{ backgroundColor: getActivityColor(item.type) }}
+                      />
+                    )}
+                    style={{ paddingVertical: 2 }}
+                  />
+                </View>
+              ))}
+              {activityLoading && (
+                <ActivityIndicator size="small" color="#6200ee" style={{ marginVertical: 12 }} />
+              )}
+              {hasMoreActivity && activityLog.length > 0 && !activityLoading && (
+                <Button
+                  mode="text"
+                  onPress={() => fetchActivityLog(activityCursor)}
+                  compact
+                  style={{ marginTop: 8 }}
+                >
+                  Load More
+                </Button>
+              )}
+            </Card.Content>
+          </Card>
+        )}
+
+        {/* WebAuthn fingerprint registration (web only) */}
+        {Platform.OS === 'web' && isWebAuthnAvailable() && parentMode && (
+          <Button
+            mode={webauthnRegistered ? 'outlined' : 'contained'}
+            onPress={handleRegisterWebAuthn}
+            style={styles.changePasswordButton}
+            icon="fingerprint"
+            loading={registeringWebAuthn}
+            disabled={registeringWebAuthn}
+          >
+            {webauthnRegistered ? 'Re-register Fingerprint' : 'Set Up Fingerprint Approval'}
+          </Button>
         )}
 
         {/* Biometric toggle */}

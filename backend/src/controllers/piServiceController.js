@@ -81,7 +81,9 @@ exports.checkExpiredSessions = async (req, res) => {
       // Update device status
       await Device.findByIdAndUpdate(session.deviceId, {
         isEnabled: false,
-        enabledUntil: null
+        enabledUntil: null,
+        enabledBy: null,
+        enabledAt: null
       });
 
       // Create disable command

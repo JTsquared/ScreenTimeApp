@@ -32,6 +32,15 @@ const deviceSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  enabledBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  enabledAt: {
+    type: Date,
+    default: null
+  },
   enabledUntil: {
     type: Date,
     default: null

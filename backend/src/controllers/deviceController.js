@@ -2,6 +2,7 @@ const Device = require('../models/Device');
 const DeviceCommand = require('../models/DeviceCommand');
 const ScreenTimeSession = require('../models/ScreenTimeSession');
 const ChoreCompletion = require('../models/ChoreCompletion');
+const AllowanceTransaction = require('../models/AllowanceTransaction');
 
 // Get all devices for family
 exports.getDevices = async (req, res) => {
@@ -10,7 +11,19 @@ exports.getDevices = async (req, res) => {
       familyId: req.user.familyId
     })
       .populate('assignedTo', 'name email')
+      .populate('enabledBy', 'name role')
       .sort({ name: 1 });
+
+    // Auto-disable any devices whose enabledUntil has expired
+    for (const device of devices) {
+      if (device.isEnabled && device.enabledUntil && device.enabledUntil < new Date()) {
+        device.isEnabled = false;
+        device.enabledUntil = null;
+        device.enabledBy = null;
+        device.enabledAt = null;
+        await device.save();
+      }
+    }
 
     res.json(devices);
   } catch (error) {
@@ -129,6 +142,8 @@ exports.enableDevice = async (req, res) => {
     if (req.user.role === 'parent') {
       device.isEnabled = true;
       device.enabledUntil = null; // No time limit for parent override
+      device.enabledBy = req.user._id;
+      device.enabledAt = new Date();
       await device.save();
 
       // Create device command for Pi service
@@ -161,9 +176,22 @@ exports.enableDevice = async (req, res) => {
       status: 'approved'
     }).populate('choreId');
 
-    const totalEarned = completions.reduce((sum, completion) => {
+    const choreMinutes = completions.reduce((sum, completion) => {
       return sum + completion.choreId.screenTimeMinutes;
     }, 0);
+
+    // Include bonus minutes from savings deposits
+    const savingsDeposits = await AllowanceTransaction.find({
+      childId: req.user._id,
+      familyId: req.user.familyId,
+      type: 'savings_deposit'
+    });
+
+    const bonusMinutes = savingsDeposits.reduce((sum, t) => {
+      return sum + (t.bonusMinutes || 0);
+    }, 0);
+
+    const totalEarned = choreMinutes + bonusMinutes;
 
     const sessions = await ScreenTimeSession.find({
       childId: req.user._id,
@@ -198,6 +226,8 @@ exports.enableDevice = async (req, res) => {
     // Update device status
     device.isEnabled = true;
     device.enabledUntil = endsAt;
+    device.enabledBy = req.user._id;
+    device.enabledAt = new Date();
     await device.save();
 
     // Create device command for Pi service
@@ -235,6 +265,8 @@ exports.getDeviceStatus = async (req, res) => {
     if (device.isEnabled && device.enabledUntil && device.enabledUntil < new Date()) {
       device.isEnabled = false;
       device.enabledUntil = null;
+      device.enabledBy = null;
+      device.enabledAt = null;
       await device.save();
     }
 
@@ -317,6 +349,8 @@ exports.stopEarly = async (req, res) => {
     // Disable device
     device.isEnabled = false;
     device.enabledUntil = null;
+    device.enabledBy = null;
+    device.enabledAt = null;
     await device.save();
 
     // Create disable command for Pi service
@@ -357,6 +391,8 @@ exports.disableDevice = async (req, res) => {
     // Update device status
     device.isEnabled = false;
     device.enabledUntil = null;
+    device.enabledBy = null;
+    device.enabledAt = null;
     await device.save();
 
     // End active sessions
