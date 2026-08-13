@@ -480,6 +480,14 @@ export default function SettingsScreen() {
     return entry?.balance ?? entry?.amount ?? null;
   };
 
+  const getMemberSavings = (memberId) => {
+    const entry = balances.find(
+      (b) =>
+        (b._id || b.id || b.childId) === memberId
+    );
+    return entry?.savingsBalance ?? null;
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -603,6 +611,7 @@ export default function SettingsScreen() {
                     {children.map((member) => {
                       const memberId = member._id || member.id;
                       const balance = getMemberBalance(memberId);
+                      const savings = getMemberSavings(memberId);
                       return (
                         <List.Item
                           key={memberId}
@@ -610,6 +619,7 @@ export default function SettingsScreen() {
                           description={
                             `$${(member.allowanceRate ?? 2).toFixed(2)}/hr` +
                             (balance != null ? ` · Balance: $${Number(balance).toFixed(2)}` : '') +
+                            (savings != null ? ` · Savings: $${Number(savings).toFixed(2)}` : '') +
                             (member.username ? ` · @${member.username}` : '')
                           }
                           left={(props) => (

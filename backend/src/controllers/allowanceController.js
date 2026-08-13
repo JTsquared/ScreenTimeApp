@@ -242,6 +242,23 @@ exports.depositSavings = async (req, res) => {
     // Update savingsBalance on user
     const child = await User.findById(childId);
     child.savingsBalance = (child.savingsBalance || 0) + amount;
+
+    // Check if cumulative savings deposits have reached the next unlock threshold
+    const family = await Family.findById(req.user.familyId);
+    const minimumThreshold = family?.minimumSavingsWithdrawal || 25;
+    const currentUnlocked = child.savingsAmountUnlocked || 0;
+    // Total lifetime deposits (including this one)
+    const totalDepositsResult = await AllowanceTransaction.aggregate([
+      { $match: { childId: child._id, type: 'savings_deposit' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalDeposits = totalDepositsResult.length > 0 ? totalDepositsResult[0].total : 0;
+    // Unlock in chunks: floor(totalDeposits / threshold) * threshold
+    const shouldBeUnlocked = Math.floor(totalDeposits / minimumThreshold) * minimumThreshold;
+    if (shouldBeUnlocked > currentUnlocked) {
+      child.savingsAmountUnlocked = shouldBeUnlocked;
+    }
+
     await child.save();
 
     const newBalance = currentBalance - amount;
@@ -276,12 +293,30 @@ exports.requestWithdrawal = async (req, res) => {
     }
 
     const minimumThreshold = family.minimumSavingsWithdrawal || 25;
+    const unlocked = child.savingsAmountUnlocked || 0;
 
-    if ((child.savingsBalance || 0) < minimumThreshold) {
+    // Calculate total past withdrawals (completed ones)
+    const completedWithdrawals = await AllowanceTransaction.aggregate([
+      { $match: { childId: child._id, type: 'savings_withdrawal', status: { $in: ['completed', 'approved'] } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalWithdrawn = completedWithdrawals.length > 0 ? completedWithdrawals[0].total : 0;
+    const spendableFromSavings = unlocked - totalWithdrawn;
+
+    if (spendableFromSavings <= 0) {
       return res.status(400).json({
-        message: `Savings must be at least $${minimumThreshold.toFixed(2)} before you can withdraw`,
+        message: `You need to save $${minimumThreshold.toFixed(2)} to unlock more spending from savings`,
         savingsBalance: child.savingsBalance || 0,
-        minimumRequired: minimumThreshold
+        amountUnlocked: unlocked,
+        totalWithdrawn
+      });
+    }
+
+    if (amount > spendableFromSavings) {
+      return res.status(400).json({
+        message: `You can only spend $${spendableFromSavings.toFixed(2)} more from savings. Save another $${minimumThreshold.toFixed(2)} to unlock more.`,
+        savingsBalance: child.savingsBalance || 0,
+        spendableFromSavings: parseFloat(spendableFromSavings.toFixed(2))
       });
     }
 

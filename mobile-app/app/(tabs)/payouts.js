@@ -171,6 +171,15 @@ export default function PayoutsScreen() {
                     </Text>
                   </View>
                   <View style={styles.balanceItem}>
+                    <Text variant="labelSmall" style={styles.balanceLabel}>Savings</Text>
+                    <Text variant="titleMedium" style={[
+                      styles.savingsValue,
+                      child.savingsBalance > 0 && styles.positiveSavings,
+                    ]}>
+                      ${child.savingsBalance?.toFixed(2) || '0.00'}
+                    </Text>
+                  </View>
+                  <View style={styles.balanceItem}>
                     <Text variant="labelSmall" style={styles.balanceLabel}>Paid Out</Text>
                     <Text variant="titleMedium" style={styles.paidOutValue}>
                       ${child.totalPaidOut?.toFixed(2) || '0.00'}
@@ -320,6 +329,12 @@ const styles = StyleSheet.create({
   },
   paidOutValue: {
     color: '#888',
+  },
+  savingsValue: {
+    color: '#333',
+  },
+  positiveSavings: {
+    color: '#1976d2',
   },
   currentBalance: {
     color: '#333',

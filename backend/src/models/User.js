@@ -45,6 +45,11 @@ const userSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  savingsAmountUnlocked: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   webauthnCredentials: [{
     credentialID: { type: String, required: true },
     credentialPublicKey: { type: String, required: true }, // base64-encoded
