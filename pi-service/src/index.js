@@ -35,6 +35,12 @@ async function processCommand(command) {
   let result;
 
   try {
+    // Ensure blocked group is ready before processing any command
+    if (!await ensureBlockedGroupReady()) {
+      await backendClient.updateCommandStatus(command._id, 'failed', 'Pi-hole blocked group not available');
+      return;
+    }
+
     if (command.command === 'enable') {
       // Enable device
       result = await piholeClient.enableDevice(macAddress);
@@ -122,16 +128,48 @@ async function checkExpiredSessions() {
 }
 
 /**
+ * Ensure Pi-hole blocked group is initialized, re-authenticating if needed
+ */
+async function ensureBlockedGroupReady() {
+  if (piholeClient.blockedGroupId) return true;
+
+  console.log('Blocked group not initialized, attempting recovery...');
+  const authed = await piholeClient.authenticate();
+  if (!authed) {
+    console.error('Pi-hole re-authentication failed during recovery');
+    return false;
+  }
+
+  const setup = await piholeClient.setupBlockedGroup();
+  if (!setup) {
+    console.error('Failed to re-setup blocked group during recovery');
+    return false;
+  }
+
+  console.log('Blocked group recovery successful');
+  return true;
+}
+
+/**
  * Re-sync blocked devices — catches IP changes for currently blocked devices
  */
 async function syncBlockedDevices() {
   try {
+    if (!await ensureBlockedGroupReady()) return;
+
     const devices = await backendClient.getAllDevices();
+    const enabledMacs = [];
+
     for (const device of devices) {
-      if (!device.isEnabled) {
+      if (device.isEnabled) {
+        enabledMacs.push(device.macAddress);
+      } else {
         await piholeClient.disableDevice(device.macAddress);
       }
     }
+
+    // Block any Pi-hole clients not associated with enabled devices
+    await piholeClient.blockUnknownClients(enabledMacs);
   } catch (error) {
     console.error('Error syncing blocked devices:', error);
   }

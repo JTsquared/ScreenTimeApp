@@ -313,6 +313,59 @@ class PiHoleClient {
   }
 
   /**
+   * Block all Pi-hole clients that aren't associated with enabled devices.
+   * This catches IPv6 temporary addresses by blocking everything in group 0
+   * except IPs/MACs belonging to enabled devices.
+   */
+  async blockUnknownClients(enabledMacs) {
+    try {
+      if (!this.blockedGroupId) return 0;
+
+      // Get all known IPs for enabled devices
+      const allowedIdentifiers = new Set();
+      for (const mac of enabledMacs) {
+        allowedIdentifiers.add(mac.toLowerCase());
+        const ips = await this.getDeviceIPs(mac);
+        for (const ip of ips) {
+          allowedIdentifiers.add(ip.toLowerCase());
+        }
+      }
+
+      // Get all Pi-hole clients in group 0 (unblocked)
+      const response = await this.apiRequest('GET', '/api/clients');
+      const clients = response.data.clients || [];
+      let blocked = 0;
+
+      for (const client of clients) {
+        const ident = (client.client || '').toLowerCase();
+        // Skip if this client belongs to an enabled device
+        if (allowedIdentifiers.has(ident)) continue;
+        // Only process clients that are in default group (unblocked)
+        if (!client.groups || !client.groups.includes(0)) continue;
+        // Skip if already in blocked group
+        if (client.groups.includes(this.blockedGroupId)) continue;
+
+        try {
+          await this.apiRequest('PUT', `/api/clients/${this.encodeClient(client.client)}`, {
+            groups: [this.blockedGroupId]
+          });
+          blocked++;
+        } catch (e) {
+          // Skip errors for individual clients
+        }
+      }
+
+      if (blocked > 0) {
+        console.log(`Blocked ${blocked} unknown/unassociated client entries`);
+      }
+      return blocked;
+    } catch (error) {
+      console.error('Error blocking unknown clients:', error.message);
+      return 0;
+    }
+  }
+
+  /**
    * Check if device is currently blocked
    */
   async isDeviceBlocked(macAddress) {
