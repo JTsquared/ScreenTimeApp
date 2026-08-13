@@ -147,6 +147,63 @@ class PiHoleClient {
   }
 
   /**
+   * Find all Pi-hole client entries associated with a device and ensure they're in the right group.
+   * This catches IPv6 temporary addresses that rotate and aren't in the network table.
+   */
+  async syncAllClientEntries(macAddress, groups) {
+    try {
+      const mac = macAddress.toLowerCase();
+
+      // Get the hostname Pi-hole assigned to this MAC
+      let hostname = null;
+      try {
+        const macClient = await this.apiRequest('GET', `/api/clients/${this.encodeClient(mac)}`);
+        hostname = (macClient.data.client || macClient.data).name;
+      } catch (e) {
+        // MAC not registered yet
+      }
+
+      if (!hostname) return 0;
+
+      // Find all client entries with the same hostname that are NOT in the target group
+      const response = await this.apiRequest('GET', '/api/clients');
+      const clients = response.data.clients || [];
+      let updated = 0;
+
+      for (const client of clients) {
+        if (client.name === hostname) {
+          // Check if this client is already in the right group
+          const targetGroup = groups[0];
+          const inTargetGroup = client.groups && client.groups.includes(targetGroup);
+          const inDefaultOnly = client.groups && client.groups.length === 1 && client.groups[0] === 0;
+
+          // If blocking (target is blocked group) and client is in default group, block it
+          // If unblocking (target is 0) and client is in blocked group, unblock it
+          const needsUpdate = (targetGroup !== 0 && inDefaultOnly) ||
+                              (targetGroup === 0 && !client.groups.includes(0));
+
+          if (needsUpdate) {
+            try {
+              await this.apiRequest('PUT', `/api/clients/${this.encodeClient(client.client)}`, { groups });
+              updated++;
+            } catch (e) {
+              console.error(`Error updating client ${client.client}:`, e.message);
+            }
+          }
+        }
+      }
+
+      if (updated > 0) {
+        console.log(`Synced ${updated} additional client entries for ${macAddress} (hostname: ${hostname})`);
+      }
+      return updated;
+    } catch (error) {
+      console.error(`Error syncing client entries for ${macAddress}:`, error.message);
+      return 0;
+    }
+  }
+
+  /**
    * Ensure a client entry exists in Pi-hole for a given identifier (MAC or IP)
    */
   async ensureClientEntry(identifier, name, groups) {
@@ -223,6 +280,8 @@ class PiHoleClient {
     try {
       console.log(`Enabling device: ${macAddress}`);
       await this.setDeviceGroup(macAddress, [0]);
+      // Also unblock any IPv6 temporary addresses by hostname match
+      await this.syncAllClientEntries(macAddress, [0]);
       console.log(`Device ${macAddress} enabled successfully`);
       return { success: true, message: 'Device enabled' };
     } catch (error) {
@@ -243,6 +302,8 @@ class PiHoleClient {
       }
 
       await this.setDeviceGroup(macAddress, [this.blockedGroupId]);
+      // Also catch any IPv6 temporary addresses by hostname match
+      await this.syncAllClientEntries(macAddress, [this.blockedGroupId]);
       console.log(`Device ${macAddress} disabled successfully`);
       return { success: true, message: 'Device disabled' };
     } catch (error) {
