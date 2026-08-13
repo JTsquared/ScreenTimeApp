@@ -32,6 +32,10 @@ const scheduleRuleSchema = new mongoose.Schema({
       message: 'Must have at least one valid day (0-6)'
     }
   },
+  timezone: {
+    type: String,
+    default: 'America/New_York'
+  },
   isEnabled: {
     type: Boolean,
     default: true

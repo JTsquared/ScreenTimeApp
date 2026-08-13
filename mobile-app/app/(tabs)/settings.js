@@ -538,6 +538,7 @@ export default function SettingsScreen() {
         startTime: scheduleStartTime,
         endTime: scheduleEndTime,
         daysOfWeek: scheduleDays,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
       if (editingSchedule) {

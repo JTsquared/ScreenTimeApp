@@ -2,20 +2,34 @@ const ScheduleRule = require('../models/ScheduleRule');
 
 // Helper: check if current time falls within a schedule rule
 function isRuleActive(rule, now = new Date()) {
-  const currentDay = now.getDay();
-  if (!rule.daysOfWeek.includes(currentDay)) return false;
+  // Convert to the rule's timezone
+  const tz = rule.timezone || 'America/New_York';
+  const localStr = now.toLocaleString('en-US', { timeZone: tz });
+  const localDate = new Date(localStr);
 
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentDay = localDate.getDay();
+  const currentMinutes = localDate.getHours() * 60 + localDate.getMinutes();
   const [startH, startM] = rule.startTime.split(':').map(Number);
   const [endH, endM] = rule.endTime.split(':').map(Number);
   const startMinutes = startH * 60 + startM;
   const endMinutes = endH * 60 + endM;
 
-  // Handle overnight ranges (e.g. 22:00 - 06:00)
+  // Handle overnight ranges (e.g. 21:30 - 07:00)
   if (endMinutes <= startMinutes) {
-    return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    if (currentMinutes < endMinutes) {
+      // After midnight, before end — rule started yesterday
+      const yesterday = (currentDay + 6) % 7;
+      return rule.daysOfWeek.includes(yesterday);
+    }
+    if (currentMinutes >= startMinutes) {
+      // Evening portion — rule starts today
+      return rule.daysOfWeek.includes(currentDay);
+    }
+    return false;
   }
 
+  // Same-day range
+  if (!rule.daysOfWeek.includes(currentDay)) return false;
   return currentMinutes >= startMinutes && currentMinutes < endMinutes;
 }
 
@@ -40,7 +54,7 @@ exports.createRule = async (req, res) => {
       return res.status(403).json({ message: 'Only parents can manage schedules' });
     }
 
-    const { type, name, startTime, endTime, daysOfWeek } = req.body;
+    const { type, name, startTime, endTime, daysOfWeek, timezone } = req.body;
 
     if (!type || !name || !startTime || !endTime || !daysOfWeek) {
       return res.status(400).json({ message: 'All fields are required' });
@@ -62,6 +76,7 @@ exports.createRule = async (req, res) => {
       name,
       startTime,
       endTime,
+      timezone: timezone || 'America/New_York',
       daysOfWeek,
       createdBy: req.user._id
     });
@@ -89,11 +104,12 @@ exports.updateRule = async (req, res) => {
       return res.status(404).json({ message: 'Schedule rule not found' });
     }
 
-    const { name, startTime, endTime, daysOfWeek, isEnabled } = req.body;
+    const { name, startTime, endTime, daysOfWeek, isEnabled, timezone } = req.body;
 
     if (name !== undefined) rule.name = name;
     if (startTime !== undefined) rule.startTime = startTime;
     if (endTime !== undefined) rule.endTime = endTime;
+    if (timezone !== undefined) rule.timezone = timezone;
     if (daysOfWeek !== undefined) rule.daysOfWeek = daysOfWeek;
     if (isEnabled !== undefined) rule.isEnabled = isEnabled;
 
