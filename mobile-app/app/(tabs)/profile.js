@@ -179,6 +179,11 @@ export default function ProfileScreen() {
                 <Text variant="labelSmall" style={styles.statLabel}>
                   Savings
                 </Text>
+                {(childBalance?.spendableFromSavings || 0) > 0 && (
+                  <Text variant="labelSmall" style={styles.availableSavingsLabel}>
+                    ${Number(childBalance.spendableFromSavings).toFixed(2)} available
+                  </Text>
+                )}
               </View>
               <View style={styles.statBox}>
                 <Text variant="titleMedium" style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
@@ -384,6 +389,11 @@ const styles = StyleSheet.create({
   statLabel: {
     color: '#666',
     marginTop: 4,
+  },
+  availableSavingsLabel: {
+    color: '#1976d2',
+    marginTop: 2,
+    fontWeight: '600',
   },
   rateText: {
     textAlign: 'center',
