@@ -341,7 +341,7 @@ export default function WalletScreen() {
   };
 
   const minWithdrawal = familySettings?.minimumSavingsWithdrawal || 25;
-  const canWithdraw = (balance?.savingsBalance || 0) >= minWithdrawal;
+  const canWithdraw = (balance?.spendableFromSavings || 0) > 0;
 
   const getTypeLabel = (type) => {
     switch (type) {
@@ -423,6 +423,13 @@ export default function WalletScreen() {
                 </Text>
               </View>
             </View>
+            {(balance?.spendableFromSavings || 0) > 0 && (
+              <View style={styles.availableSavingsRow}>
+                <Text variant="bodySmall" style={styles.availableSavingsText}>
+                  Available to spend from savings: ${(balance.spendableFromSavings).toFixed(2)}
+                </Text>
+              </View>
+            )}
           </Card.Content>
         </Card>
 
@@ -470,7 +477,7 @@ export default function WalletScreen() {
             </Button>
             {!canWithdraw && (balance?.savingsBalance || 0) > 0 && (
               <Text style={styles.thresholdNote}>
-                Need ${minWithdrawal.toFixed(2)} in savings to withdraw (currently ${(balance?.savingsBalance || 0).toFixed(2)})
+                Save ${minWithdrawal.toFixed(2)} total to unlock spending from savings (currently ${(balance?.savingsBalance || 0).toFixed(2)})
               </Text>
             )}
             {(balance?.savingsBalance || 0) === 0 && (
@@ -556,7 +563,7 @@ export default function WalletScreen() {
               You're about to deposit ${pendingDepositAmount.toFixed(2)} to your savings.
             </Text>
             <Text style={{ marginBottom: 8, color: '#e65100', fontWeight: '600' }}>
-              Once money is in savings, you cannot spend it until your savings reaches at least ${minWithdrawal.toFixed(2)}.
+              Once money is in savings, you need to save a total of ${minWithdrawal.toFixed(2)} before you can spend from it.
             </Text>
             <Text style={{ color: '#2e7d32' }}>
               You'll earn {calcBonusMinutes(pendingDepositAmount)} bonus screen time minutes!
@@ -684,8 +691,11 @@ export default function WalletScreen() {
         <Dialog visible={withdrawVisible} onDismiss={() => setWithdrawVisible(false)}>
           <Dialog.Title>Withdraw from Savings</Dialog.Title>
           <Dialog.Content>
-            <Text style={{ marginBottom: 12, color: '#666', fontSize: 13 }}>
-              Savings balance: ${(balance?.savingsBalance || 0).toFixed(2)}. A parent will need to approve this request.
+            <Text style={{ marginBottom: 4, color: '#666', fontSize: 13 }}>
+              Savings balance: ${(balance?.savingsBalance || 0).toFixed(2)}
+            </Text>
+            <Text style={{ marginBottom: 12, color: '#1976d2', fontSize: 13 }}>
+              Available to withdraw: ${(balance?.spendableFromSavings || 0).toFixed(2)}. A parent will need to approve this request.
             </Text>
             <TextInput
               label="Amount ($)"
@@ -787,6 +797,15 @@ const styles = StyleSheet.create({
   balanceLabel: {
     color: '#666',
     marginTop: 4,
+  },
+  availableSavingsRow: {
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  availableSavingsText: {
+    color: '#1976d2',
+    fontWeight: '600',
   },
   actionButton: {
     marginBottom: 10,

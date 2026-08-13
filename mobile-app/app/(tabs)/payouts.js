@@ -183,6 +183,11 @@ export default function PayoutsScreen() {
                     ]}>
                       ${child.savingsBalance?.toFixed(2) || '0.00'}
                     </Text>
+                    {(child.spendableFromSavings || 0) > 0 && (
+                      <Text variant="bodySmall" style={styles.availableSavings}>
+                        ${child.spendableFromSavings.toFixed(2)} available
+                      </Text>
+                    )}
                   </View>
                   <View style={styles.balanceItem}>
                     <Text variant="labelSmall" style={styles.balanceLabel}>Paid Out</Text>
@@ -348,6 +353,11 @@ const styles = StyleSheet.create({
   },
   positiveSavings: {
     color: '#1976d2',
+  },
+  availableSavings: {
+    color: '#1976d2',
+    fontSize: 11,
+    marginTop: 2,
   },
   currentBalance: {
     color: '#333',

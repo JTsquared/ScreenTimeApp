@@ -40,7 +40,13 @@ exports.getBalance = async (req, res) => {
       .filter(t => t.type === 'savings_deposit')
       .reduce((sum, t) => sum + t.amount, 0);
 
+    const totalSavingsWithdrawals = transactions
+      .filter(t => t.type === 'savings_withdrawal' && (t.status === 'completed' || t.status === 'approved'))
+      .reduce((sum, t) => sum + t.amount, 0);
+
     const balance = totalEarned - totalPaidOut - totalSavingsDeposits;
+    const unlocked = child.savingsAmountUnlocked || 0;
+    const spendableFromSavings = Math.max(0, Math.min(unlocked - totalSavingsWithdrawals, child.savingsBalance || 0));
 
     res.json({
       childId,
@@ -49,6 +55,7 @@ exports.getBalance = async (req, res) => {
       totalPaidOut: parseFloat(totalPaidOut.toFixed(2)),
       balance: parseFloat(balance.toFixed(2)),
       savingsBalance: child.savingsBalance || 0,
+      spendableFromSavings: parseFloat(spendableFromSavings.toFixed(2)),
       allowanceRate: child.allowanceRate
     });
   } catch (error) {
