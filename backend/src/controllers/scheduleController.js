@@ -38,7 +38,7 @@ exports.getRules = async (req, res) => {
   try {
     const rules = await ScheduleRule.find({
       familyId: req.user.familyId
-    }).sort({ type: 1, createdAt: -1 });
+    }).populate('excludedDevices', 'name').sort({ type: 1, createdAt: -1 });
 
     res.json(rules);
   } catch (error) {
@@ -54,7 +54,7 @@ exports.createRule = async (req, res) => {
       return res.status(403).json({ message: 'Only parents can manage schedules' });
     }
 
-    const { type, name, startTime, endTime, daysOfWeek, timezone } = req.body;
+    const { type, name, startTime, endTime, daysOfWeek, timezone, excludedDevices } = req.body;
 
     if (!type || !name || !startTime || !endTime || !daysOfWeek) {
       return res.status(400).json({ message: 'All fields are required' });
@@ -78,6 +78,7 @@ exports.createRule = async (req, res) => {
       endTime,
       timezone: timezone || 'America/New_York',
       daysOfWeek,
+      excludedDevices: excludedDevices || [],
       createdBy: req.user._id
     });
 
@@ -104,13 +105,14 @@ exports.updateRule = async (req, res) => {
       return res.status(404).json({ message: 'Schedule rule not found' });
     }
 
-    const { name, startTime, endTime, daysOfWeek, isEnabled, timezone } = req.body;
+    const { name, startTime, endTime, daysOfWeek, isEnabled, timezone, excludedDevices } = req.body;
 
     if (name !== undefined) rule.name = name;
     if (startTime !== undefined) rule.startTime = startTime;
     if (endTime !== undefined) rule.endTime = endTime;
     if (timezone !== undefined) rule.timezone = timezone;
     if (daysOfWeek !== undefined) rule.daysOfWeek = daysOfWeek;
+    if (excludedDevices !== undefined) rule.excludedDevices = excludedDevices;
     if (isEnabled !== undefined) rule.isEnabled = isEnabled;
 
     await rule.save();

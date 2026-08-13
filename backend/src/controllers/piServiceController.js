@@ -178,10 +178,11 @@ async function processScheduleRules() {
       }
     }
 
-    // Blackout: disable all enabled devices (except parent-enabled ones)
+    // Blackout: disable all enabled devices (except parent-enabled and excluded ones)
     if (activeBlackout) {
+      const excludedIds = (activeBlackout.excludedDevices || []).map(id => id.toString());
       for (const device of devices) {
-        if (device.isEnabled && device.enabledSource !== 'parent') {
+        if (device.isEnabled && device.enabledSource !== 'parent' && !excludedIds.includes(device._id.toString())) {
           device.isEnabled = false;
           device.enabledBy = null;
           device.enabledAt = null;

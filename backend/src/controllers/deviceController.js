@@ -147,7 +147,12 @@ exports.enableDevice = async (req, res) => {
         type: 'blackout',
         isEnabled: true
       });
-      const activeBlackout = blackoutRules.find(r => isRuleActive(r));
+      const activeBlackout = blackoutRules.find(r => {
+        if (!isRuleActive(r)) return false;
+        // Skip if this device is excluded
+        const excludedIds = (r.excludedDevices || []).map(id => id.toString());
+        return !excludedIds.includes(deviceId);
+      });
       if (activeBlackout) {
         return res.status(403).json({
           message: `Devices are blocked during ${activeBlackout.name} (${activeBlackout.startTime} - ${activeBlackout.endTime})`,

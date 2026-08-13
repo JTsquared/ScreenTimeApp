@@ -21,6 +21,7 @@ import { authAPI } from '../../src/api/auth';
 import { allowanceAPI } from '../../src/api/allowance';
 import { familyAPI } from '../../src/api/family';
 import { choresAPI } from '../../src/api/chores';
+import { devicesAPI } from '../../src/api/devices';
 import { scheduleAPI } from '../../src/api/schedule';
 import { isBiometricAvailable, getBiometricType, isBiometricLoginEnabled, disableBiometricLogin, isWebAuthnAvailable, hasWebAuthnCredential, webauthnRegister, setWebAuthnRegistered, setWebAuthnEmail } from '../../src/utils/biometric';
 
@@ -104,6 +105,8 @@ export default function SettingsScreen() {
   const [scheduleStartTime, setScheduleStartTime] = useState('');
   const [scheduleEndTime, setScheduleEndTime] = useState('');
   const [scheduleDays, setScheduleDays] = useState([]);
+  const [scheduleExcludedDevices, setScheduleExcludedDevices] = useState([]);
+  const [familyDevices, setFamilyDevices] = useState([]);
   const [savingSchedule, setSavingSchedule] = useState(false);
 
   const fetchFamilyMembers = async () => {
@@ -284,8 +287,13 @@ export default function SettingsScreen() {
   const fetchSchedules = async () => {
     if (parentMode) {
       try {
-        const data = await scheduleAPI.getRules();
-        setScheduleRules(Array.isArray(data) ? data : []);
+        const [rulesData, devicesData] = await Promise.all([
+          scheduleAPI.getRules(),
+          devicesAPI.getDevices().catch(() => []),
+        ]);
+        setScheduleRules(Array.isArray(rulesData) ? rulesData : []);
+        const devList = Array.isArray(devicesData) ? devicesData : devicesData.devices || [];
+        setFamilyDevices(devList);
       } catch (err) {
         // Non-critical
       }
@@ -507,6 +515,7 @@ export default function SettingsScreen() {
       setScheduleStartTime(rule.startTime);
       setScheduleEndTime(rule.endTime);
       setScheduleDays([...rule.daysOfWeek]);
+      setScheduleExcludedDevices((rule.excludedDevices || []).map(d => d._id || d));
     } else {
       setEditingSchedule(null);
       setScheduleType('freeplay');
@@ -514,6 +523,7 @@ export default function SettingsScreen() {
       setScheduleStartTime('');
       setScheduleEndTime('');
       setScheduleDays([]);
+      setScheduleExcludedDevices([]);
     }
     setScheduleDialogVisible(true);
   };
@@ -538,6 +548,7 @@ export default function SettingsScreen() {
         startTime: scheduleStartTime,
         endTime: scheduleEndTime,
         daysOfWeek: scheduleDays,
+        excludedDevices: scheduleExcludedDevices,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
@@ -914,6 +925,11 @@ export default function SettingsScreen() {
                               <Text variant="bodySmall" style={{ color: '#666' }}>
                                 {rule.startTime} - {rule.endTime} · {formatDays(rule.daysOfWeek)}
                               </Text>
+                              {rule.excludedDevices?.length > 0 && (
+                                <Text variant="bodySmall" style={{ color: '#999', fontSize: 11 }}>
+                                  Excluded: {rule.excludedDevices.map(d => d.name || d).join(', ')}
+                                </Text>
+                              )}
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                               <Button
@@ -1351,6 +1367,30 @@ export default function SettingsScreen() {
               <Button compact mode="text" onPress={() => setScheduleDays([0,6])} disabled={savingSchedule}>Weekends</Button>
               <Button compact mode="text" onPress={() => setScheduleDays([0,1,2,3,4,5,6])} disabled={savingSchedule}>Every day</Button>
             </View>
+            {scheduleType === 'blackout' && familyDevices.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text variant="labelMedium" style={{ marginBottom: 8, color: '#666' }}>Exclude Devices</Text>
+                {familyDevices.map((device) => {
+                  const devId = device._id || device.id;
+                  const isExcluded = scheduleExcludedDevices.includes(devId);
+                  return (
+                    <Button
+                      key={devId}
+                      mode={isExcluded ? 'contained' : 'outlined'}
+                      onPress={() => setScheduleExcludedDevices(prev =>
+                        isExcluded ? prev.filter(id => id !== devId) : [...prev, devId]
+                      )}
+                      compact
+                      style={{ marginBottom: 4 }}
+                      icon={isExcluded ? 'check' : 'close'}
+                      disabled={savingSchedule}
+                    >
+                      {device.name}
+                    </Button>
+                  );
+                })}
+              </View>
+            )}
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setScheduleDialogVisible(false)} disabled={savingSchedule}>Cancel</Button>

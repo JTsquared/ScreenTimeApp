@@ -32,6 +32,10 @@ const scheduleRuleSchema = new mongoose.Schema({
       message: 'Must have at least one valid day (0-6)'
     }
   },
+  excludedDevices: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Device'
+  }],
   timezone: {
     type: String,
     default: 'America/New_York'
