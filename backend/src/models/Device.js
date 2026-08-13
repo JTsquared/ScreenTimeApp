@@ -45,6 +45,11 @@ const deviceSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  enabledSource: {
+    type: String,
+    enum: ['parent', 'child', 'freeplay', null],
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

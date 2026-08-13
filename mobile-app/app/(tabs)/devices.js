@@ -19,6 +19,7 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { devicesAPI } from '../../src/api/devices';
 import { choresAPI } from '../../src/api/chores';
+import { scheduleAPI } from '../../src/api/schedule';
 
 const DEVICE_TYPES = [
   { label: 'Computer', value: 'computer', icon: 'laptop' },
@@ -63,6 +64,9 @@ export default function DevicesScreen() {
   // Toggling state
   const [togglingId, setTogglingId] = useState(null);
 
+  // Schedule status
+  const [scheduleStatus, setScheduleStatus] = useState({ freeplayActive: false, blackoutActive: false });
+
   // Tick every 60s to update elapsed time display
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -88,15 +92,24 @@ export default function DevicesScreen() {
     }
   };
 
+  const fetchScheduleStatus = async () => {
+    try {
+      const data = await scheduleAPI.getActiveStatus();
+      setScheduleStatus(data);
+    } catch (err) {
+      // Non-critical
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([fetchDevices(), fetchScreenTime()]);
+    await Promise.all([fetchDevices(), fetchScreenTime(), fetchScheduleStatus()]);
     setLoading(false);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchDevices(), fetchScreenTime()]);
+    await Promise.all([fetchDevices(), fetchScreenTime(), fetchScheduleStatus()]);
     setRefreshing(false);
   };
 
@@ -373,8 +386,9 @@ export default function DevicesScreen() {
               onPress={() => openScreenTimeDialog(item)}
               compact
               icon="clock-plus-outline"
+              disabled={scheduleStatus.blackoutActive}
             >
-              Use Screen Time
+              {scheduleStatus.blackoutActive ? 'Blackout Active' : 'Use Screen Time'}
             </Button>
           ) : null}
         </Card.Actions>
@@ -393,6 +407,22 @@ export default function DevicesScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Schedule status banners */}
+      {scheduleStatus.freeplayActive && (
+        <View style={styles.freeplayBanner}>
+          <Text style={styles.bannerText}>
+            🎮 Free Play active — {scheduleStatus.freeplayRule?.name} ({scheduleStatus.freeplayRule?.startTime} - {scheduleStatus.freeplayRule?.endTime})
+          </Text>
+        </View>
+      )}
+      {scheduleStatus.blackoutActive && (
+        <View style={styles.blackoutBanner}>
+          <Text style={styles.bannerText}>
+            🚫 Blackout active — {scheduleStatus.blackoutRule?.name} ({scheduleStatus.blackoutRule?.startTime} - {scheduleStatus.blackoutRule?.endTime})
+          </Text>
+        </View>
+      )}
+
       {/* Child: screen time balance */}
       {!parentMode && availableScreenTime != null && (
         <Card style={styles.screenTimeCard} mode="elevated">
@@ -643,6 +673,21 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     color: '#666',
+  },
+  freeplayBanner: {
+    backgroundColor: '#e8f5e9',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  blackoutBanner: {
+    backgroundColor: '#ffebee',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  bannerText: {
+    textAlign: 'center',
+    fontWeight: '600',
+    fontSize: 13,
   },
   screenTimeCard: {
     margin: 16,

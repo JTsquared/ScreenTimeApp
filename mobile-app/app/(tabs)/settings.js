@@ -21,6 +21,7 @@ import { authAPI } from '../../src/api/auth';
 import { allowanceAPI } from '../../src/api/allowance';
 import { familyAPI } from '../../src/api/family';
 import { choresAPI } from '../../src/api/chores';
+import { scheduleAPI } from '../../src/api/schedule';
 import { isBiometricAvailable, getBiometricType, isBiometricLoginEnabled, disableBiometricLogin, isWebAuthnAvailable, hasWebAuthnCredential, webauthnRegister, setWebAuthnRegistered, setWebAuthnEmail } from '../../src/utils/biometric';
 
 export default function SettingsScreen() {
@@ -92,6 +93,18 @@ export default function SettingsScreen() {
 
   // Logout confirmation
   const [logoutDialogVisible, setLogoutDialogVisible] = useState(false);
+
+  // Schedules
+  const [scheduleRules, setScheduleRules] = useState([]);
+  const [schedulesExpanded, setSchedulesExpanded] = useState(false);
+  const [scheduleDialogVisible, setScheduleDialogVisible] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
+  const [scheduleType, setScheduleType] = useState('freeplay');
+  const [scheduleName, setScheduleName] = useState('');
+  const [scheduleStartTime, setScheduleStartTime] = useState('');
+  const [scheduleEndTime, setScheduleEndTime] = useState('');
+  const [scheduleDays, setScheduleDays] = useState([]);
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   const fetchFamilyMembers = async () => {
     try {
@@ -268,10 +281,21 @@ export default function SettingsScreen() {
     }
   };
 
+  const fetchSchedules = async () => {
+    if (parentMode) {
+      try {
+        const data = await scheduleAPI.getRules();
+        setScheduleRules(Array.isArray(data) ? data : []);
+      } catch (err) {
+        // Non-critical
+      }
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     const tasks = [fetchFamilyMembers(), fetchBalances(), fetchChildStats(), fetchFamilySettings(), checkBiometric()];
-    if (parentMode) tasks.push(fetchActivityLog());
+    if (parentMode) tasks.push(fetchActivityLog(), fetchSchedules());
     await Promise.all(tasks);
     setLoading(false);
   };
@@ -282,7 +306,7 @@ export default function SettingsScreen() {
     if (parentMode) {
       setActivityCursor(null);
       setHasMoreActivity(true);
-      tasks.push(fetchActivityLog());
+      tasks.push(fetchActivityLog(), fetchSchedules());
     }
     await Promise.all(tasks);
     setRefreshing(false);
@@ -470,6 +494,92 @@ export default function SettingsScreen() {
     setLogoutDialogVisible(false);
     await logout();
     router.replace('/');
+  };
+
+  // --- Schedules ---
+  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const openScheduleDialog = (rule = null) => {
+    if (rule) {
+      setEditingSchedule(rule);
+      setScheduleType(rule.type);
+      setScheduleName(rule.name);
+      setScheduleStartTime(rule.startTime);
+      setScheduleEndTime(rule.endTime);
+      setScheduleDays([...rule.daysOfWeek]);
+    } else {
+      setEditingSchedule(null);
+      setScheduleType('freeplay');
+      setScheduleName('');
+      setScheduleStartTime('');
+      setScheduleEndTime('');
+      setScheduleDays([]);
+    }
+    setScheduleDialogVisible(true);
+  };
+
+  const toggleDay = (day) => {
+    setScheduleDays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+    );
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!scheduleName.trim()) { setError('Name is required'); return; }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleStartTime)) { setError('Start time must be HH:MM (24h)'); return; }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleEndTime)) { setError('End time must be HH:MM (24h)'); return; }
+    if (scheduleDays.length === 0) { setError('Select at least one day'); return; }
+
+    setSavingSchedule(true);
+    try {
+      const payload = {
+        type: scheduleType,
+        name: scheduleName.trim(),
+        startTime: scheduleStartTime,
+        endTime: scheduleEndTime,
+        daysOfWeek: scheduleDays,
+      };
+
+      if (editingSchedule) {
+        await scheduleAPI.updateRule(editingSchedule._id, payload);
+        setSuccessMsg('Schedule updated');
+      } else {
+        await scheduleAPI.createRule(payload);
+        setSuccessMsg('Schedule created');
+      }
+      setScheduleDialogVisible(false);
+      await fetchSchedules();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to save schedule');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const handleToggleSchedule = async (rule) => {
+    try {
+      await scheduleAPI.updateRule(rule._id, { isEnabled: !rule.isEnabled });
+      await fetchSchedules();
+    } catch (err) {
+      setError('Failed to update schedule');
+    }
+  };
+
+  const handleDeleteSchedule = async (rule) => {
+    try {
+      await scheduleAPI.deleteRule(rule._id);
+      setSuccessMsg('Schedule deleted');
+      await fetchSchedules();
+    } catch (err) {
+      setError('Failed to delete schedule');
+    }
+  };
+
+  const formatDays = (days) => {
+    if (days.length === 7) return 'Every day';
+    if (days.length === 5 && [1,2,3,4,5].every(d => days.includes(d))) return 'Weekdays';
+    if (days.length === 2 && [0,6].every(d => days.includes(d))) return 'Weekends';
+    return days.map(d => DAY_LABELS[d]).join(', ');
   };
 
   const getMemberBalance = (memberId) => {
@@ -723,6 +833,107 @@ export default function SettingsScreen() {
                 </Button>
               </View>
             </Card.Content>
+          </Card>
+        )}
+
+        {/* Device Schedules */}
+        {parentMode && (
+          <Card style={styles.card} mode="elevated">
+            <Card.Title
+              title="Device Schedules"
+              titleVariant="titleMedium"
+              left={(props) => (
+                <Avatar.Icon
+                  {...props}
+                  icon="clock-outline"
+                  size={40}
+                  style={styles.sectionIcon}
+                />
+              )}
+              right={() => (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Button compact mode="text" onPress={() => openScheduleDialog()} icon="plus">
+                    Add
+                  </Button>
+                  <Button
+                    compact
+                    mode="text"
+                    onPress={() => setSchedulesExpanded(!schedulesExpanded)}
+                    icon={schedulesExpanded ? 'chevron-up' : 'chevron-down'}
+                  />
+                </View>
+              )}
+            />
+            {schedulesExpanded && (
+              <Card.Content>
+                {scheduleRules.length === 0 ? (
+                  <Text style={{ color: '#999', textAlign: 'center', padding: 16 }}>
+                    No schedules set up. Add free play or blackout times.
+                  </Text>
+                ) : (
+                  <>
+                    {scheduleRules.filter(r => r.type === 'freeplay').length > 0 && (
+                      <>
+                        <Text variant="labelLarge" style={styles.scheduleGroupLabel}>Free Play</Text>
+                        {scheduleRules.filter(r => r.type === 'freeplay').map((rule) => (
+                          <View key={rule._id} style={styles.scheduleItem}>
+                            <View style={styles.scheduleInfo}>
+                              <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                                {rule.name}
+                              </Text>
+                              <Text variant="bodySmall" style={{ color: '#666' }}>
+                                {rule.startTime} - {rule.endTime} · {formatDays(rule.daysOfWeek)}
+                              </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Button
+                                compact
+                                mode="text"
+                                onPress={() => handleToggleSchedule(rule)}
+                                textColor={rule.isEnabled ? '#4caf50' : '#999'}
+                              >
+                                {rule.isEnabled ? 'On' : 'Off'}
+                              </Button>
+                              <Button compact mode="text" onPress={() => openScheduleDialog(rule)} icon="pencil" children="" />
+                              <Button compact mode="text" onPress={() => handleDeleteSchedule(rule)} icon="delete" textColor="#d32f2f" children="" />
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                    {scheduleRules.filter(r => r.type === 'blackout').length > 0 && (
+                      <>
+                        <Text variant="labelLarge" style={[styles.scheduleGroupLabel, { marginTop: 12 }]}>Blackout Times</Text>
+                        {scheduleRules.filter(r => r.type === 'blackout').map((rule) => (
+                          <View key={rule._id} style={styles.scheduleItem}>
+                            <View style={styles.scheduleInfo}>
+                              <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                                {rule.name}
+                              </Text>
+                              <Text variant="bodySmall" style={{ color: '#666' }}>
+                                {rule.startTime} - {rule.endTime} · {formatDays(rule.daysOfWeek)}
+                              </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Button
+                                compact
+                                mode="text"
+                                onPress={() => handleToggleSchedule(rule)}
+                                textColor={rule.isEnabled ? '#d32f2f' : '#999'}
+                              >
+                                {rule.isEnabled ? 'On' : 'Off'}
+                              </Button>
+                              <Button compact mode="text" onPress={() => openScheduleDialog(rule)} icon="pencil" children="" />
+                              <Button compact mode="text" onPress={() => handleDeleteSchedule(rule)} icon="delete" textColor="#d32f2f" children="" />
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    )}
+                  </>
+                )}
+              </Card.Content>
+            )}
           </Card>
         )}
 
@@ -1074,6 +1285,80 @@ export default function SettingsScreen() {
           </Dialog.Actions>
         </Dialog>
 
+        {/* Schedule Dialog */}
+        <Dialog
+          visible={scheduleDialogVisible}
+          onDismiss={() => setScheduleDialogVisible(false)}
+        >
+          <Dialog.Title>{editingSchedule ? 'Edit Schedule' : 'New Schedule'}</Dialog.Title>
+          <Dialog.Content>
+            <SegmentedButtons
+              value={scheduleType}
+              onValueChange={setScheduleType}
+              buttons={[
+                { value: 'freeplay', label: 'Free Play' },
+                { value: 'blackout', label: 'Blackout' },
+              ]}
+              style={{ marginBottom: 12 }}
+            />
+            <TextInput
+              label="Name"
+              value={scheduleName}
+              onChangeText={setScheduleName}
+              mode="outlined"
+              placeholder={scheduleType === 'freeplay' ? 'e.g. Morning Free Play' : 'e.g. Bedtime'}
+              style={{ marginBottom: 12 }}
+              disabled={savingSchedule}
+            />
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              <TextInput
+                label="Start (HH:MM)"
+                value={scheduleStartTime}
+                onChangeText={setScheduleStartTime}
+                mode="outlined"
+                placeholder="07:00"
+                style={{ flex: 1 }}
+                disabled={savingSchedule}
+              />
+              <TextInput
+                label="End (HH:MM)"
+                value={scheduleEndTime}
+                onChangeText={setScheduleEndTime}
+                mode="outlined"
+                placeholder="08:00"
+                style={{ flex: 1 }}
+                disabled={savingSchedule}
+              />
+            </View>
+            <Text variant="labelMedium" style={{ marginBottom: 8, color: '#666' }}>Days</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {DAY_LABELS.map((label, idx) => (
+                <Button
+                  key={idx}
+                  mode={scheduleDays.includes(idx) ? 'contained' : 'outlined'}
+                  onPress={() => toggleDay(idx)}
+                  compact
+                  style={{ minWidth: 42 }}
+                  disabled={savingSchedule}
+                >
+                  {label}
+                </Button>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <Button compact mode="text" onPress={() => setScheduleDays([1,2,3,4,5])} disabled={savingSchedule}>Weekdays</Button>
+              <Button compact mode="text" onPress={() => setScheduleDays([0,6])} disabled={savingSchedule}>Weekends</Button>
+              <Button compact mode="text" onPress={() => setScheduleDays([0,1,2,3,4,5,6])} disabled={savingSchedule}>Every day</Button>
+            </View>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setScheduleDialogVisible(false)} disabled={savingSchedule}>Cancel</Button>
+            <Button onPress={handleSaveSchedule} loading={savingSchedule} disabled={savingSchedule}>
+              {editingSchedule ? 'Update' : 'Create'}
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
       </Portal>
 
       <Snackbar
@@ -1127,6 +1412,18 @@ const styles = StyleSheet.create({
   },
   sectionIcon: {
     backgroundColor: '#ede7f6',
+  },
+  scheduleGroupLabel: {
+    color: '#6200ee',
+    marginBottom: 8,
+  },
+  scheduleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  scheduleInfo: {
+    flex: 1,
   },
   chipRow: {
     flexDirection: 'row',

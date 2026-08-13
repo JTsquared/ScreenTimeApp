@@ -12,6 +12,7 @@ const familyRoutes = require('./routes/familyRoutes');
 const userRoutes = require('./routes/userRoutes');
 const piServiceRoutes = require('./routes/piServiceRoutes');
 const webauthnRoutes = require('./routes/webauthnRoutes');
+const scheduleRoutes = require('./routes/scheduleRoutes');
 
 // Initialize express app
 const app = express();
@@ -39,6 +40,7 @@ app.use('/api/family', familyRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/pi', piServiceRoutes);
 app.use('/api/webauthn', webauthnRoutes);
+app.use('/api/schedules', scheduleRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

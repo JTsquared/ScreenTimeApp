@@ -3,6 +3,8 @@ const DeviceCommand = require('../models/DeviceCommand');
 const ScreenTimeSession = require('../models/ScreenTimeSession');
 const ChoreCompletion = require('../models/ChoreCompletion');
 const AllowanceTransaction = require('../models/AllowanceTransaction');
+const ScheduleRule = require('../models/ScheduleRule');
+const { isRuleActive } = require('./scheduleController');
 
 // Get all devices for family
 exports.getDevices = async (req, res) => {
@@ -138,12 +140,30 @@ exports.enableDevice = async (req, res) => {
       return res.status(404).json({ message: 'Device not found' });
     }
 
+    // Check for active blackout (blocks children, parents can override)
+    if (req.user.role !== 'parent') {
+      const blackoutRules = await ScheduleRule.find({
+        familyId: req.user.familyId,
+        type: 'blackout',
+        isEnabled: true
+      });
+      const activeBlackout = blackoutRules.find(r => isRuleActive(r));
+      if (activeBlackout) {
+        return res.status(403).json({
+          message: `Devices are blocked during ${activeBlackout.name} (${activeBlackout.startTime} - ${activeBlackout.endTime})`,
+          blackout: true,
+          blackoutRule: activeBlackout
+        });
+      }
+    }
+
     // Parent override — enable without screen time checks
     if (req.user.role === 'parent') {
       device.isEnabled = true;
       device.enabledUntil = null; // No time limit for parent override
       device.enabledBy = req.user._id;
       device.enabledAt = new Date();
+      device.enabledSource = 'parent';
       await device.save();
 
       // Create device command for Pi service
@@ -228,6 +248,7 @@ exports.enableDevice = async (req, res) => {
     device.enabledUntil = endsAt;
     device.enabledBy = req.user._id;
     device.enabledAt = new Date();
+    device.enabledSource = 'child';
     await device.save();
 
     // Create device command for Pi service

@@ -1,5 +1,7 @@
 const DeviceCommand = require('../models/DeviceCommand');
 const Device = require('../models/Device');
+const ScheduleRule = require('../models/ScheduleRule');
+const { isRuleActive } = require('./scheduleController');
 
 // Get pending commands for Pi service to execute
 exports.getPendingCommands = async (req, res) => {
@@ -96,12 +98,108 @@ exports.checkExpiredSessions = async (req, res) => {
       disableCommands.push(command);
     }
 
+    // --- Process schedule rules (freeplay / blackout) ---
+    const scheduleActions = await processScheduleRules();
+
     res.json({
       expiredSessions: expiredSessions.length,
-      disableCommands: disableCommands.length
+      disableCommands: disableCommands.length,
+      scheduleActions
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+// Process freeplay and blackout schedule rules
+async function processScheduleRules() {
+  const now = new Date();
+  const actions = { freeplayEnabled: 0, freeplayDisabled: 0, blackoutDisabled: 0 };
+
+  // Get all enabled rules across all families
+  const rules = await ScheduleRule.find({ isEnabled: true });
+
+  // Group rules by family
+  const familyRules = {};
+  for (const rule of rules) {
+    const fid = rule.familyId.toString();
+    if (!familyRules[fid]) familyRules[fid] = [];
+    familyRules[fid].push(rule);
+  }
+
+  for (const [familyId, fRules] of Object.entries(familyRules)) {
+    const activeFreeplay = fRules.find(r => r.type === 'freeplay' && isRuleActive(r, now));
+    const activeBlackout = fRules.find(r => r.type === 'blackout' && isRuleActive(r, now));
+
+    const devices = await Device.find({ familyId });
+
+    // Freeplay: enable all disabled devices
+    if (activeFreeplay) {
+      for (const device of devices) {
+        if (!device.isEnabled && device.macAddress) {
+          device.isEnabled = true;
+          device.enabledBy = null;
+          device.enabledAt = now;
+          device.enabledUntil = null;
+          device.enabledSource = 'freeplay';
+          await device.save();
+
+          await DeviceCommand.create({
+            deviceId: device._id,
+            command: 'enable',
+            familyId,
+            status: 'pending'
+          });
+          actions.freeplayEnabled++;
+        }
+      }
+    }
+
+    // If freeplay just ended: disable devices that were enabled by freeplay
+    if (!activeFreeplay) {
+      for (const device of devices) {
+        if (device.isEnabled && device.enabledSource === 'freeplay') {
+          device.isEnabled = false;
+          device.enabledBy = null;
+          device.enabledAt = null;
+          device.enabledUntil = null;
+          device.enabledSource = null;
+          await device.save();
+
+          await DeviceCommand.create({
+            deviceId: device._id,
+            command: 'disable',
+            familyId,
+            status: 'pending'
+          });
+          actions.freeplayDisabled++;
+        }
+      }
+    }
+
+    // Blackout: disable all enabled devices (except parent-enabled ones)
+    if (activeBlackout) {
+      for (const device of devices) {
+        if (device.isEnabled && device.enabledSource !== 'parent') {
+          device.isEnabled = false;
+          device.enabledBy = null;
+          device.enabledAt = null;
+          device.enabledUntil = null;
+          device.enabledSource = null;
+          await device.save();
+
+          await DeviceCommand.create({
+            deviceId: device._id,
+            command: 'disable',
+            familyId,
+            status: 'pending'
+          });
+          actions.blackoutDisabled++;
+        }
+      }
+    }
+  }
+
+  return actions;
+}
