@@ -68,9 +68,13 @@ export default function PayoutsScreen() {
     setPayoutDialogVisible(true);
   };
 
+  const getTotalAvailable = (child) => {
+    return (child.balance || 0) + (child.spendableFromSavings || 0);
+  };
+
   const handlePayAll = (child) => {
     setPayoutTarget(child);
-    setPayoutAmount(String(child.balance));
+    setPayoutAmount(String(getTotalAvailable(child).toFixed(2)));
     setPayoutNotes('');
     setPayoutDialogVisible(true);
   };
@@ -84,8 +88,9 @@ export default function PayoutsScreen() {
       return;
     }
 
-    if (amount > payoutTarget.balance) {
-      setError(`Amount exceeds balance of $${payoutTarget.balance.toFixed(2)}`);
+    const totalAvailable = getTotalAvailable(payoutTarget);
+    if (amount > totalAvailable) {
+      setError(`Amount exceeds available funds of $${totalAvailable.toFixed(2)}`);
       return;
     }
 
@@ -187,7 +192,7 @@ export default function PayoutsScreen() {
                   </View>
                 </View>
               </Card.Content>
-              {child.balance > 0 && (
+              {getTotalAvailable(child) > 0 && (
                 <Card.Actions>
                   <Button
                     mode="outlined"
@@ -203,7 +208,7 @@ export default function PayoutsScreen() {
                     compact
                     icon="cash-fast"
                   >
-                    Pay All (${child.balance.toFixed(2)})
+                    Pay All (${getTotalAvailable(child).toFixed(2)})
                   </Button>
                 </Card.Actions>
               )}
@@ -222,8 +227,16 @@ export default function PayoutsScreen() {
             <Text style={{ marginBottom: 4 }}>
               Pay {payoutTarget?.childName}
             </Text>
-            <Text variant="bodySmall" style={{ marginBottom: 12, color: '#666' }}>
-              Available balance: ${payoutTarget?.balance?.toFixed(2) || '0.00'}
+            <Text variant="bodySmall" style={{ color: '#666' }}>
+              Balance: ${payoutTarget?.balance?.toFixed(2) || '0.00'}
+            </Text>
+            {(payoutTarget?.spendableFromSavings || 0) > 0 && (
+              <Text variant="bodySmall" style={{ color: '#1976d2' }}>
+                + ${payoutTarget.spendableFromSavings.toFixed(2)} from savings
+              </Text>
+            )}
+            <Text variant="bodySmall" style={{ marginBottom: 12, color: '#666', fontWeight: 'bold' }}>
+              Total available: ${payoutTarget ? getTotalAvailable(payoutTarget).toFixed(2) : '0.00'}
             </Text>
             <TextInput
               label="Amount ($)"

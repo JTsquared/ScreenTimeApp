@@ -101,7 +101,7 @@ exports.recordPayout = async (req, res) => {
       return res.status(404).json({ message: 'Child not found' });
     }
 
-    // Check if child has sufficient balance
+    // Check if child has sufficient balance (including spendable savings)
     const transactions = await AllowanceTransaction.find({
       childId,
       familyId: req.user.familyId
@@ -113,13 +113,27 @@ exports.recordPayout = async (req, res) => {
       return sum;
     }, 0);
 
-    if (currentBalance < amount) {
+    // Calculate spendable savings
+    const unlocked = child.savingsAmountUnlocked || 0;
+    const totalSavingsWithdrawals = transactions
+      .filter(t => t.type === 'savings_withdrawal' && (t.status === 'completed' || t.status === 'approved'))
+      .reduce((sum, t) => sum + t.amount, 0);
+    const spendableFromSavings = Math.max(0, Math.min(unlocked - totalSavingsWithdrawals, child.savingsBalance || 0));
+    const totalAvailable = currentBalance + spendableFromSavings;
+
+    if (amount > totalAvailable) {
       return res.status(400).json({
-        message: 'Insufficient balance',
+        message: 'Insufficient funds',
         currentBalance: parseFloat(currentBalance.toFixed(2)),
+        spendableFromSavings: parseFloat(spendableFromSavings.toFixed(2)),
+        totalAvailable: parseFloat(totalAvailable.toFixed(2)),
         requestedAmount: amount
       });
     }
+
+    // Determine how much comes from balance vs savings
+    const fromBalance = Math.min(amount, Math.max(0, currentBalance));
+    const fromSavings = amount - fromBalance;
 
     // Create payout transaction
     const transaction = await AllowanceTransaction.create({
@@ -130,12 +144,28 @@ exports.recordPayout = async (req, res) => {
       notes
     });
 
-    const newBalance = currentBalance - amount;
+    // If drawing from savings, create a withdrawal transaction and update savingsBalance
+    if (fromSavings > 0) {
+      await AllowanceTransaction.create({
+        childId,
+        amount: fromSavings,
+        type: 'savings_withdrawal',
+        status: 'approved',
+        familyId: req.user.familyId,
+        notes: `Savings used for payout: $${fromSavings.toFixed(2)}`
+      });
+
+      child.savingsBalance = (child.savingsBalance || 0) - fromSavings;
+      await child.save();
+    }
+
+    const newBalance = currentBalance - fromBalance;
 
     res.json({
       transaction,
       previousBalance: parseFloat(currentBalance.toFixed(2)),
-      newBalance: parseFloat(newBalance.toFixed(2))
+      newBalance: parseFloat(newBalance.toFixed(2)),
+      fromSavings: parseFloat(fromSavings.toFixed(2))
     });
   } catch (error) {
     console.error(error);
@@ -174,7 +204,13 @@ exports.getAllBalances = async (req, res) => {
           .filter(t => t.type === 'savings_deposit')
           .reduce((sum, t) => sum + t.amount, 0);
 
+        const totalSavingsWithdrawals = transactions
+          .filter(t => t.type === 'savings_withdrawal' && (t.status === 'completed' || t.status === 'approved'))
+          .reduce((sum, t) => sum + t.amount, 0);
+
         const balance = totalEarned - totalPaidOut - totalSavingsDeposits;
+        const unlocked = child.savingsAmountUnlocked || 0;
+        const spendableFromSavings = Math.max(0, Math.min(unlocked - totalSavingsWithdrawals, child.savingsBalance || 0));
 
         return {
           childId: child._id,
@@ -183,6 +219,7 @@ exports.getAllBalances = async (req, res) => {
           totalPaidOut: parseFloat(totalPaidOut.toFixed(2)),
           balance: parseFloat(balance.toFixed(2)),
           savingsBalance: child.savingsBalance || 0,
+          spendableFromSavings: parseFloat(spendableFromSavings.toFixed(2)),
           allowanceRate: child.allowanceRate
         };
       })
