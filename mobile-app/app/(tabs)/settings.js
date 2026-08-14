@@ -507,7 +507,15 @@ export default function SettingsScreen() {
   // --- Schedules ---
   const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  const openScheduleDialog = (rule = null) => {
+  const openScheduleDialog = async (rule = null) => {
+    // Ensure devices are loaded for exclusion picker
+    if (familyDevices.length === 0) {
+      try {
+        const devData = await devicesAPI.getDevices();
+        const devList = Array.isArray(devData) ? devData : devData.devices || [];
+        setFamilyDevices(devList);
+      } catch (e) { /* non-critical */ }
+    }
     if (rule) {
       setEditingSchedule(rule);
       setScheduleType(rule.type);
