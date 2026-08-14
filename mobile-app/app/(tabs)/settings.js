@@ -1314,9 +1314,11 @@ export default function SettingsScreen() {
         <Dialog
           visible={scheduleDialogVisible}
           onDismiss={() => setScheduleDialogVisible(false)}
+          style={{ maxHeight: '90%' }}
         >
           <Dialog.Title>{editingSchedule ? 'Edit Schedule' : 'New Schedule'}</Dialog.Title>
-          <Dialog.Content>
+          <Dialog.ScrollArea style={{ maxHeight: 500, paddingHorizontal: 0 }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 24 }}>
             <SegmentedButtons
               value={scheduleType}
               onValueChange={setScheduleType}
@@ -1399,7 +1401,8 @@ export default function SettingsScreen() {
                 })}
               </View>
             )}
-          </Dialog.Content>
+          </ScrollView>
+          </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={() => setScheduleDialogVisible(false)} disabled={savingSchedule}>Cancel</Button>
             <Button onPress={handleSaveSchedule} loading={savingSchedule} disabled={savingSchedule}>
